@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LLM Response Evaluator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #1e293b; }
+    ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+
+    /* Star rating hover effects */
+    .stars input { display: none; }
+    .stars label { cursor: pointer; font-size: 1.6rem; color: #475569; transition: color .15s; }
+    .stars label:hover,
+    .stars label:hover ~ label,
+    .stars input:checked ~ label { color: #f59e0b; }
+    .stars { display: flex; flex-direction: row-reverse; justify-content: flex-end; gap: 2px; }
+
+    /* Pulse animation for loading */
+    @keyframes shimmer {
+      0%   { background-position: -400px 0; }
+      100% { background-position:  400px 0; }
+    }
+    .shimmer {
+      background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+      background-size: 800px 100%;
+      animation: shimmer 1.6s infinite;
+    }
+
+    /* Typing cursor on streaming text */
+    .typing::after { content: '|'; animation: blink .7s step-end infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* Provider badge colours */
+    .badge-anthropic { background: #c05c3a22; color: #f97316; border-color: #f9731640; }
+    .badge-openai    { background: #10b98122; color: #10b981; border-color: #10b98140; }
+  </style>
+</head>
+<body class="min-h-full bg-slate-950 text-slate-100 font-sans">
+
+  <!-- ===== HEADER ===== -->
+  <header class="border-b border-slate-800 bg-slate-900/70 backdrop-blur sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-sm font-bold">
+          LLM
+        </div>
+        <div>
+          <h1 class="text-lg font-bold tracking-tight leading-none">Response Evaluator</h1>
+          <p class="text-xs text-slate-400 mt-0.5">Claude vs GPT-4o — side-by-side comparison</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 text-xs text-slate-400">
+        <span id="status-dot" class="w-2 h-2 rounded-full bg-slate-600"></span>
+        <span id="status-text">Ready</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== MAIN ===== -->
+  <main class="max-w-7xl mx-auto px-4 py-8 space-y-8">
+
+    <!-- Prompt section -->
+    <section class="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+      <label class="block text-sm font-semibold text-slate-300" for="prompt-input">
+        Your Prompt
+      </label>
+      <textarea
+        id="prompt-input"
+        rows="4"
+        placeholder="e.g. Explain the difference between REST and GraphQL APIs..."
+        class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500
+               focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent resize-none transition"
+      ></textarea>
+
+      <div class="flex items-center justify-between flex-wrap gap-3">
+        <p class="text-xs text-slate-500">
+          Responses from <span class="text-orange-400 font-medium">claude-opus-4-6</span> and
+          <span class="text-emerald-400 font-medium">gpt-4o</span> will appear below.
+        </p>
+        <div class="flex gap-3">
+          <button
+            id="export-btn"
+            onclick="exportReport()"
+            disabled
+            class="px-4 py-2 rounded-xl text-sm font-medium border border-slate-700 text-slate-400
+                   hover:border-slate-500 hover:text-slate-200 disabled:opacity-30 disabled:cursor-not-allowed transition"
+          >
+            Export Report
+          </button>
+          <button
+            id="test-btn"
+            onclick="runEvaluation()"
+            class="px-6 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-blue-600
+                   hover:from-violet-500 hover:to-blue-500 transition shadow-lg shadow-violet-900/40
+                   disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            <svg id="btn-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+            <span id="btn-text">Test</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Error banner -->
+    <div id="error-banner" class="hidden bg-red-950 border border-red-800 rounded-xl px-5 py-3 text-sm text-red-300 flex items-start gap-3">
+      <svg class="w-5 h-5 shrink-0 mt-0.5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      <span id="error-text"></span>
+    </div>
+
+    <!-- Response cards -->
+    <section id="results-section" class="hidden">
+
+      <!-- Summary bar -->
+      <div id="summary-bar" class="mb-5 bg-slate-900 border border-slate-800 rounded-xl px-5 py-3 flex flex-wrap gap-6 text-xs text-slate-400">
+        <span>Prompt tested at <strong id="summary-time" class="text-slate-200"></strong></span>
+        <span>Fastest: <strong id="summary-fastest" class="text-emerald-400"></strong></span>
+        <span>Cheapest: <strong id="summary-cheapest" class="text-emerald-400"></strong></span>
+      </div>
+
+      <!-- Side-by-side cards -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Claude card -->
+        <div id="card-claude" class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden flex flex-col">
+          <div class="border-b border-slate-800 px-5 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <img src="https://www.anthropic.com/favicon.ico" class="w-5 h-5 rounded" onerror="this.style.display='none'" alt="">
+              <div>
+                <h2 class="font-semibold text-sm">Claude</h2>
+                <p class="text-xs text-slate-500">claude-opus-4-6</p>
+              </div>
+            </div>
+            <span class="text-xs px-2.5 py-0.5 rounded-full border badge-anthropic font-medium">Anthropic</span>
+          </div>
+
+          <!-- Metrics row -->
+          <div class="grid grid-cols-3 gap-px bg-slate-800 text-center text-xs">
+            <div class="bg-slate-900 py-3">
+              <div id="claude-time" class="text-base font-bold text-slate-100">—</div>
+              <div class="text-slate-500 mt-0.5">seconds</div>
+            </div>
+            <div class="bg-slate-900 py-3">
+              <div id="claude-tokens" class="text-base font-bold text-slate-100">—</div>
+              <div class="text-slate-500 mt-0.5">tokens</div>
+            </div>
+            <div class="bg-slate-900 py-3">
+              <div id="claude-cost" class="text-base font-bold text-slate-100">—</div>
+              <div class="text-slate-500 mt-0.5">est. cost</div>
+            </div>
+          </div>
+
+          <!-- Response text -->
+          <div class="p-5 flex-1">
+            <div id="claude-loading" class="space-y-2">
+              <div class="shimmer h-3 rounded-full w-full"></div>
+              <div class="shimmer h-3 rounded-full w-5/6"></div>
+              <div class="shimmer h-3 rounded-full w-4/6"></div>
+            </div>
+            <p id="claude-text"
+               class="hidden text-sm text-slate-300 leading-relaxed whitespace-pre-wrap"></p>
+            <p id="claude-error"
+               class="hidden text-sm text-red-400 leading-relaxed"></p>
+          </div>
+
+          <!-- Star rating -->
+          <div class="border-t border-slate-800 px-5 py-4 flex items-center justify-between">
+            <span class="text-xs text-slate-500">Your rating</span>
+            <div class="stars" id="stars-claude">
+              <input type="radio" name="stars-claude" id="sc5" value="5"><label for="sc5" title="5">&#9733;</label>
+              <input type="radio" name="stars-claude" id="sc4" value="4"><label for="sc4" title="4">&#9733;</label>
+              <input type="radio" name="stars-claude" id="sc3" value="3"><label for="sc3" title="3">&#9733;</label>
+              <input type="radio" name="stars-claude" id="sc2" value="2"><label for="sc2" title="2">&#9733;</label>
+              <input type="radio" name="stars-claude" id="sc1" value="1"><label for="sc1" title="1">&#9733;</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- GPT-4o card -->
+        <div id="card-gpt4" class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden flex flex-col">
+          <div class="border-b border-slate-800 px-5 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <img src="https://openai.com/favicon.ico" class="w-5 h-5 rounded" onerror="this.style.display='none'" alt="">
+              <div>
+                <h2 class="font-semibold text-sm">GPT-4o</h2>
+                <p class="text-xs text-slate-500">gpt-4o</p>
+              </div>
+            </div>
+            <span class="text-xs px-2.5 py-0.5 rounded-full border badge-openai font-medium">OpenAI</span>
+          </div>
+
+          <!-- Metrics row -->
+          <div class="grid grid-cols-3 gap-px bg-slate-800 text-center text-xs">
+            <div class="bg-slate-900 py-3">
+              <div id="gpt4-time" class="text-base font-bold text-slate-100">—</div>
+              <div class="text-slate-500 mt-0.5">seconds</div>
+            </div>
+            <div class="bg-slate-900 py-3">
+              <div id="gpt4-tokens" class="text-base font-bold text-slate-100">—</div>
+              <div class="text-slate-500 mt-0.5">tokens</div>
+            </div>
+            <div class="bg-slate-900 py-3">
+              <div id="gpt4-cost" class="text-base font-bold text-slate-100">—</div>
+              <div class="text-slate-500 mt-0.5">est. cost</div>
+            </div>
+          </div>
+
+          <!-- Response text -->
+          <div class="p-5 flex-1">
+            <div id="gpt4-loading" class="space-y-2">
+              <div class="shimmer h-3 rounded-full w-full"></div>
+              <div class="shimmer h-3 rounded-full w-5/6"></div>
+              <div class="shimmer h-3 rounded-full w-4/6"></div>
+            </div>
+            <p id="gpt4-text"
+               class="hidden text-sm text-slate-300 leading-relaxed whitespace-pre-wrap"></p>
+            <p id="gpt4-error"
+               class="hidden text-sm text-red-400 leading-relaxed"></p>
+          </div>
+
+          <!-- Star rating -->
+          <div class="border-t border-slate-800 px-5 py-4 flex items-center justify-between">
+            <span class="text-xs text-slate-500">Your rating</span>
+            <div class="stars" id="stars-gpt4">
+              <input type="radio" name="stars-gpt4" id="sg5" value="5"><label for="sg5" title="5">&#9733;</label>
+              <input type="radio" name="stars-gpt4" id="sg4" value="4"><label for="sg4" title="4">&#9733;</label>
+              <input type="radio" name="stars-gpt4" id="sg3" value="3"><label for="sg3" title="3">&#9733;</label>
+              <input type="radio" name="stars-gpt4" id="sg2" value="2"><label for="sg2" title="2">&#9733;</label>
+              <input type="radio" name="stars-gpt4" id="sg1" value="1"><label for="sg1" title="1">&#9733;</label>
+            </div>
+          </div>
+        </div>
+      </div><!-- /grid -->
+    </section><!-- /results-section -->
+
+    <!-- Empty state hint -->
+    <div id="empty-state" class="flex flex-col items-center justify-center py-20 text-center space-y-3 text-slate-600">
+      <svg class="w-14 h-14 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+              d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+      </svg>
+      <p class="text-sm">Enter a prompt and click <strong class="text-slate-400">Test</strong> to compare responses.</p>
+    </div>
+
+  </main>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="max-w-7xl mx-auto px-4 py-6 text-center text-xs text-slate-600">
+    LLM Response Evaluator &mdash; costs are estimates based on public pricing &middot; built with Flask + Tailwind
+  </footer>
+
+  <!-- ===== JAVASCRIPT ===== -->
+  <script>
+    let lastResult = null;   // stores the latest API response for export
+
+    // --- Utility helpers -------------------------------------------------
+
+    function setStatus(text, color = 'bg-slate-600') {
+      const dot  = document.getElementById('status-dot');
+      const span = document.getElementById('status-text');
+      dot.className  = `w-2 h-2 rounded-full ${color}`;
+      span.textContent = text;
+    }
+
+    function showError(msg) {
+      const banner = document.getElementById('error-banner');
+      document.getElementById('error-text').textContent = msg;
+      banner.classList.remove('hidden');
+    }
+
+    function hideError() {
+      document.getElementById('error-banner').classList.add('hidden');
+    }
+
+    function setLoading(loading) {
+      const btn     = document.getElementById('test-btn');
+      const btnText = document.getElementById('btn-text');
+      const btnIcon = document.getElementById('btn-icon');
+
+      btn.disabled = loading;
+      if (loading) {
+        btnText.textContent = 'Testing…';
+        btnIcon.innerHTML = `
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+          <path class="opacity-75" fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>`;
+        btnIcon.classList.add('animate-spin');
+      } else {
+        btnText.textContent = 'Test';
+        btnIcon.innerHTML = `
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M13 10V3L4 14h7v7l9-11h-7z"/>`;
+        btnIcon.classList.remove('animate-spin');
+      }
+    }
+
+    function showLoadingCards() {
+      document.getElementById('empty-state').classList.add('hidden');
+      document.getElementById('results-section').classList.remove('hidden');
+
+      for (const provider of ['claude', 'gpt4']) {
+        document.getElementById(`${provider}-loading`).classList.remove('hidden');
+        document.getElementById(`${provider}-text`).classList.add('hidden');
+        document.getElementById(`${provider}-error`).classList.add('hidden');
+        document.getElementById(`${provider}-time`).textContent   = '—';
+        document.getElementById(`${provider}-tokens`).textContent = '—';
+        document.getElementById(`${provider}-cost`).textContent   = '—';
+      }
+
+      // Reset stars
+      document.querySelectorAll('input[name="stars-claude"], input[name="stars-gpt4"]')
+        .forEach(r => r.checked = false);
+    }
+
+    function populateCard(provider, data) {
+      document.getElementById(`${provider}-loading`).classList.add('hidden');
+
+      document.getElementById(`${provider}-time`).textContent =
+        `${data.response_time}s`;
+      document.getElementById(`${provider}-tokens`).textContent =
+        data.total_tokens.toLocaleString();
+      document.getElementById(`${provider}-cost`).textContent =
+        data.estimated_cost < 0.0001
+          ? '<$0.0001'
+          : `$${data.estimated_cost.toFixed(4)}`;
+
+      if (data.error) {
+        const errEl = document.getElementById(`${provider}-error`);
+        errEl.textContent = `Error: ${data.error}`;
+        errEl.classList.remove('hidden');
+      } else {
+        const textEl = document.getElementById(`${provider}-text`);
+        textEl.textContent = data.text;
+        textEl.classList.remove('hidden');
+      }
+    }
+
+    function updateSummaryBar(results, timestamp) {
+      // Format timestamp
+      const dt = new Date(timestamp);
+      document.getElementById('summary-time').textContent =
+        dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+      const claude = results.claude;
+      const gpt4   = results.gpt4;
+
+      // Fastest
+      if (!claude.error && !gpt4.error) {
+        const fasterModel = claude.response_time <= gpt4.response_time ? 'Claude' : 'GPT-4o';
+        document.getElementById('summary-fastest').textContent = fasterModel;
+      } else {
+        document.getElementById('summary-fastest').textContent = 'N/A';
+      }
+
+      // Cheapest
+      if (!claude.error && !gpt4.error) {
+        const cheaperModel = claude.estimated_cost <= gpt4.estimated_cost ? 'Claude' : 'GPT-4o';
+        document.getElementById('summary-cheapest').textContent = cheaperModel;
+      } else {
+        document.getElementById('summary-cheapest').textContent = 'N/A';
+      }
+    }
+
+    // --- Main evaluation -------------------------------------------------
+
+    async function runEvaluation() {
+      const prompt = document.getElementById('prompt-input').value.trim();
+      if (!prompt) {
+        showError('Please enter a prompt before testing.');
+        return;
+      }
+
+      hideError();
+      setLoading(true);
+      setStatus('Calling APIs…', 'bg-yellow-500');
+      showLoadingCards();
+
+      try {
+        const res = await fetch('/api/evaluate', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ prompt }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: res.statusText }));
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        lastResult  = data;
+
+        populateCard('claude', data.results.claude);
+        populateCard('gpt4',   data.results.gpt4);
+        updateSummaryBar(data.results, data.timestamp);
+
+        document.getElementById('export-btn').disabled = false;
+        setStatus('Done', 'bg-emerald-500');
+
+      } catch (err) {
+        showError(err.message);
+        setStatus('Error', 'bg-red-500');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    // --- Export ----------------------------------------------------------
+
+    function getStarRating(name) {
+      const checked = document.querySelector(`input[name="${name}"]:checked`);
+      return checked ? parseInt(checked.value) : null;
+    }
+
+    function exportReport() {
+      if (!lastResult) return;
+
+      const report = {
+        exported_at: new Date().toISOString(),
+        prompt:      lastResult.prompt,
+        tested_at:   lastResult.timestamp,
+        results: {
+          claude: {
+            ...lastResult.results.claude,
+            user_rating: getStarRating('stars-claude'),
+          },
+          gpt4: {
+            ...lastResult.results.gpt4,
+            user_rating: getStarRating('stars-gpt4'),
+          },
+        },
+      };
+
+      const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `llm-eval-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // --- Keyboard shortcut -----------------------------------------------
+    document.getElementById('prompt-input').addEventListener('keydown', e => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') runEvaluation();
+    });
+  </script>
+</body>
+</html>
