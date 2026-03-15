@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     const [stockResult, overviewResult, newsResult] = await Promise.all([
       getStockData(resolved.ticker, resolved.isPublic),
       resolved.ticker && resolved.isPublic ? getCompanyOverview(resolved.ticker) : Promise.resolve(null),
-      getCompanyNews(resolved.name),
+      getCompanyNews(resolved.name, resolved.ticker),
     ]);
 
     // Step 3: generate snapshot + talking points with Claude
