@@ -68,6 +68,45 @@ async function fetchSparkline(symbol: string): Promise<number[]> {
   return closes;
 }
 
+export interface CompanyOverview {
+  marketCap: string;
+  revenue: string;
+  growth: string;
+}
+
+// Fetch live fundamentals from Alpha Vantage OVERVIEW endpoint
+export async function getCompanyOverview(ticker: string): Promise<CompanyOverview | null> {
+  const apiKey = process.env.ALPHA_VANTAGE_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const url = `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${ticker}&apikey=${apiKey}`;
+    const res = await fetch(url, { next: { revalidate: 0 } });
+    const data = await res.json();
+
+    if (!data.MarketCapitalization) return null;
+
+    const marketCapRaw = parseInt(data.MarketCapitalization);
+    const revenueRaw = parseInt(data.RevenueTTM);
+    const growthRaw = parseFloat(data.QuarterlyRevenueGrowthYOY);
+
+    const formatBig = (n: number) => {
+      if (n >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
+      if (n >= 1e9)  return `$${(n / 1e9).toFixed(0)}B`;
+      if (n >= 1e6)  return `$${(n / 1e6).toFixed(0)}M`;
+      return `$${n.toLocaleString()}`;
+    };
+
+    return {
+      marketCap: formatBig(marketCapRaw),
+      revenue: `${formatBig(revenueRaw)} (TTM)`,
+      growth: isNaN(growthRaw) ? 'N/A' : `${(growthRaw * 100).toFixed(1)}% YoY (TTM)`,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // Main export: get full stock data using a pre-resolved ticker from Claude
 export async function getStockData(ticker: string | null, isPublic: boolean): Promise<StockResult> {
   if (!isPublic || !ticker) return { error: true, reason: 'private' };
