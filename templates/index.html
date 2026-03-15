@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Precisly — LLM Response Evaluator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { DEFAULT: '#6366f1', dark: '#4f46e5' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+    .dark ::-webkit-scrollbar-thumb { background: #475569; }
+
+    /* Star rating */
+    .stars { display: inline-flex; flex-direction: row-reverse; gap: 2px; }
+    .stars input { display: none; }
+    .stars label { cursor: pointer; font-size: 1.25rem; color: #cbd5e1; transition: color 0.15s; }
+    .stars input:checked ~ label,
+    .stars label:hover,
+    .stars label:hover ~ label { color: #fbbf24; }
+
+    /* Fade-in animation */
+    @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+    .fade-in { animation: fadeIn 0.25s ease both; }
+
+    /* Toast */
+    #toast { transition: opacity 0.3s, transform 0.3s; }
+    #toast.hidden { opacity: 0; transform: translateY(8px); pointer-events: none; }
+  </style>
+</head>
+<body class="h-full bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-sans transition-colors duration-300">
+
+<!-- ===== NAVBAR ===== -->
+<nav class="sticky top-0 z-50 bg-white/80 dark:bg-slate-800/80 backdrop-blur border-b border-slate-200 dark:border-slate-700">
+  <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <svg class="w-7 h-7 text-brand" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+      </svg>
+      <span class="font-bold text-lg tracking-tight">Precisly</span>
+      <span class="text-xs bg-brand/10 text-brand px-2 py-0.5 rounded-full font-medium">LLM Evaluator</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <!-- Stats pill -->
+      <div id="nav-stats" class="hidden sm:flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
+        <span><span id="stat-total" class="font-semibold text-slate-700 dark:text-slate-200">0</span> evals</span>
+      </div>
+      <!-- Export -->
+      <div class="relative group">
+        <button class="btn-secondary text-sm flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+          Export
+        </button>
+        <div class="absolute right-0 mt-1 w-36 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg overflow-hidden opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity z-50">
+          <a href="/api/export?format=json" class="block px-4 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700">JSON</a>
+          <a href="/api/export?format=csv" class="block px-4 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700">CSV</a>
+        </div>
+      </div>
+      <!-- Dark mode toggle -->
+      <button id="theme-toggle" class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" title="Toggle dark mode">
+        <svg id="icon-sun" class="w-5 h-5 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z"/></svg>
+        <svg id="icon-moon" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+      </button>
+    </div>
+  </div>
+</nav>
+
+<!-- ===== MAIN ===== -->
+<main class="max-w-7xl mx-auto px-4 py-8 space-y-8">
+
+  <!-- Stats Cards -->
+  <section id="stats-section" class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+    <div class="card text-center">
+      <p class="text-2xl font-bold text-brand" id="sc-total">0</p>
+      <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Total Evaluations</p>
+    </div>
+    <div class="card text-center">
+      <p class="text-2xl font-bold text-emerald-500" id="sc-winner">—</p>
+      <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Top Model</p>
+    </div>
+    <div class="card text-center">
+      <p class="text-2xl font-bold text-amber-500" id="sc-avg">—</p>
+      <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Avg Rating</p>
+    </div>
+    <div class="card text-center">
+      <p class="text-2xl font-bold text-sky-500" id="sc-models">0</p>
+      <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Models Tested</p>
+    </div>
+  </section>
+
+  <!-- New Evaluation Form -->
+  <section class="card">
+    <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+      <svg class="w-5 h-5 text-brand" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+      New Evaluation
+    </h2>
+
+    <!-- Prompt -->
+    <div class="mb-4">
+      <label class="label">Prompt / Question</label>
+      <textarea id="prompt-input" rows="3" placeholder="Enter the prompt you tested with all models…"
+        class="input w-full resize-none"></textarea>
+    </div>
+
+    <!-- Tags -->
+    <div class="mb-4">
+      <label class="label">Tags <span class="text-slate-400 font-normal">(comma-separated)</span></label>
+      <input id="tags-input" type="text" placeholder="e.g. coding, summarization, creative" class="input w-full" />
+    </div>
+
+    <!-- Response columns -->
+    <div id="responses-container" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-4">
+      <!-- Cards injected by JS -->
+    </div>
+
+    <div class="flex flex-wrap gap-3 items-center">
+      <button id="add-model-btn" class="btn-secondary text-sm flex items-center gap-1.5">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+        Add Model
+      </button>
+      <button id="save-btn" class="btn-primary text-sm flex items-center gap-1.5">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+        Save Evaluation
+      </button>
+      <button id="clear-form-btn" class="btn-ghost text-sm text-slate-500">Clear form</button>
+    </div>
+  </section>
+
+  <!-- Filters + Search -->
+  <section class="flex flex-wrap gap-3 items-center">
+    <div class="relative flex-1 min-w-48">
+      <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35"/></svg>
+      <input id="search-input" type="text" placeholder="Search prompts…" class="input pl-9 w-full" />
+    </div>
+    <select id="filter-model" class="input w-40">
+      <option value="">All models</option>
+    </select>
+    <select id="filter-tag" class="input w-36">
+      <option value="">All tags</option>
+    </select>
+    <select id="sort-select" class="input w-40">
+      <option value="newest">Newest first</option>
+      <option value="oldest">Oldest first</option>
+      <option value="rating-high">Highest rated</option>
+      <option value="rating-low">Lowest rated</option>
+    </select>
+  </section>
+
+  <!-- History -->
+  <section>
+    <h2 class="text-lg font-semibold mb-4">Evaluation History</h2>
+    <div id="history-list" class="space-y-4">
+      <p id="empty-state" class="text-slate-400 dark:text-slate-500 text-center py-16">
+        No evaluations yet. Add your first one above!
+      </p>
+    </div>
+  </section>
+
+</main>
+
+<!-- Toast notification -->
+<div id="toast" class="fixed bottom-6 right-6 bg-slate-800 dark:bg-slate-700 text-white text-sm px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 hidden z-50">
+  <svg class="w-4 h-4 text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+  <span id="toast-msg">Saved!</span>
+</div>
+
+<!-- ===== STYLES (Tailwind components via @apply emulation) ===== -->
+<style>
+  .card {
+    @apply bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm;
+  }
+  .input {
+    @apply bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2
+           text-sm focus:outline-none focus:ring-2 focus:ring-brand/50 focus:border-brand
+           placeholder:text-slate-400 dark:placeholder:text-slate-500 transition;
+  }
+  .label {
+    @apply block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1;
+  }
+  .btn-primary {
+    @apply bg-brand hover:bg-brand-dark text-white font-medium rounded-lg px-4 py-2 transition-colors;
+  }
+  .btn-secondary {
+    @apply bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600
+           text-slate-700 dark:text-slate-200 font-medium rounded-lg px-4 py-2 transition-colors;
+  }
+  .btn-ghost {
+    @apply hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg px-3 py-2 transition-colors;
+  }
+</style>
+
+<!-- ===== JAVASCRIPT ===== -->
+<script>
+// ---- State ----
+let evaluations = [];
+let responseCount = 0;
+const MODELS = ["GPT-4o", "Claude 3.5 Sonnet", "Gemini 1.5 Pro", "Llama 3.1 70B", "Mistral Large", "Command R+"];
+
+// ---- Dark mode ----
+const htmlEl = document.documentElement;
+const themeToggle = document.getElementById('theme-toggle');
+const iconSun = document.getElementById('icon-sun');
+const iconMoon = document.getElementById('icon-moon');
+
+function applyTheme(dark) {
+  htmlEl.classList.toggle('dark', dark);
+  iconSun.classList.toggle('hidden', !dark);
+  iconMoon.classList.toggle('hidden', dark);
+  localStorage.setItem('theme', dark ? 'dark' : 'light');
+}
+applyTheme(localStorage.getItem('theme') === 'dark');
+themeToggle.addEventListener('click', () => applyTheme(!htmlEl.classList.contains('dark')));
+
+// ---- Toast ----
+function showToast(msg, duration = 2500) {
+  const t = document.getElementById('toast');
+  document.getElementById('toast-msg').textContent = msg;
+  t.classList.remove('hidden');
+  setTimeout(() => t.classList.add('hidden'), duration);
+}
+
+// ---- Response card builder ----
+function createResponseCard(index, model = '') {
+  const card = document.createElement('div');
+  card.className = 'relative border border-slate-200 dark:border-slate-700 rounded-xl p-4 bg-slate-50 dark:bg-slate-900 fade-in';
+  card.dataset.index = index;
+
+  const modelOptions = MODELS.map(m =>
+    `<option value="${m}" ${m === model ? 'selected' : ''}>${m}</option>`
+  ).join('');
+
+  card.innerHTML = `
+    <button class="remove-card absolute top-3 right-3 text-slate-300 hover:text-red-400 transition-colors" title="Remove">
+      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+      </svg>
+    </button>
+    <div class="mb-3">
+      <label class="label">Model</label>
+      <select class="model-select input w-full">
+        <option value="">Select model…</option>
+        ${modelOptions}
+        <option value="custom">Custom…</option>
+      </select>
+      <input class="custom-model-input input w-full mt-2 hidden" placeholder="Enter model name…" />
+    </div>
+    <div class="mb-3">
+      <label class="label">Response</label>
+      <textarea class="response-text input w-full resize-none" rows="5" placeholder="Paste the model's response here…"></textarea>
+    </div>
+    <div class="mb-2">
+      <label class="label">Rating</label>
+      <div class="stars">
+        ${[5,4,3,2,1].map(n => `
+          <input type="radio" name="rating-${index}" id="r${index}-${n}" value="${n}" />
+          <label for="r${index}-${n}" title="${n} stars">★</label>
+        `).join('')}
+      </div>
+    </div>
+    <div>
+      <label class="label">Notes</label>
+      <input class="response-notes input w-full" type="text" placeholder="Optional notes…" />
+    </div>
+    <div class="mt-3">
+      <label class="inline-flex items-center gap-2 cursor-pointer text-sm text-slate-600 dark:text-slate-300">
+        <input type="checkbox" class="winner-check w-4 h-4 accent-brand" />
+        Mark as winner
+      </label>
+    </div>
+  `;
+
+  // Custom model input
+  card.querySelector('.model-select').addEventListener('change', function () {
+    const customInput = card.querySelector('.custom-model-input');
+    customInput.classList.toggle('hidden', this.value !== 'custom');
+  });
+
+  // Remove card
+  card.querySelector('.remove-card').addEventListener('click', () => {
+    if (document.querySelectorAll('#responses-container > div').length > 1) {
+      card.remove();
+    } else {
+      showToast('Need at least one model response.');
+    }
+  });
+
+  // Winner mutual exclusion
+  card.querySelector('.winner-check').addEventListener('change', function () {
+    if (this.checked) {
+      document.querySelectorAll('.winner-check').forEach(cb => {
+        if (cb !== this) cb.checked = false;
+      });
+    }
+  });
+
+  return card;
+}
+
+function addResponseCard(model = '') {
+  const container = document.getElementById('responses-container');
+  container.appendChild(createResponseCard(responseCount++, model));
+}
+
+// ---- Init with 2 default cards ----
+addResponseCard('GPT-4o');
+addResponseCard('Claude 3.5 Sonnet');
+
+document.getElementById('add-model-btn').addEventListener('click', () => addResponseCard());
+
+// ---- Clear form ----
+document.getElementById('clear-form-btn').addEventListener('click', () => {
+  document.getElementById('prompt-input').value = '';
+  document.getElementById('tags-input').value = '';
+  const container = document.getElementById('responses-container');
+  container.innerHTML = '';
+  responseCount = 0;
+  addResponseCard('GPT-4o');
+  addResponseCard('Claude 3.5 Sonnet');
+});
+
+// ---- Save evaluation ----
+document.getElementById('save-btn').addEventListener('click', async () => {
+  const prompt = document.getElementById('prompt-input').value.trim();
+  if (!prompt) { showToast('Please enter a prompt.'); return; }
+
+  const cards = document.querySelectorAll('#responses-container > div');
+  const responses = [];
+  let winner = null;
+
+  for (const card of cards) {
+    const modelSelect = card.querySelector('.model-select');
+    let model = modelSelect.value === 'custom'
+      ? card.querySelector('.custom-model-input').value.trim()
+      : modelSelect.value;
+    if (!model) { showToast('Please select a model for each response.'); return; }
+
+    const text = card.querySelector('.response-text').value.trim();
+    const ratingInput = card.querySelector('input[type="radio"]:checked');
+    const rating = ratingInput ? parseInt(ratingInput.value) : null;
+    const notes = card.querySelector('.response-notes').value.trim();
+    const isWinner = card.querySelector('.winner-check').checked;
+    if (isWinner) winner = model;
+
+    responses.push({ model, text, rating, notes });
+  }
+
+  const tagsRaw = document.getElementById('tags-input').value;
+  const tags = tagsRaw.split(',').map(t => t.trim()).filter(Boolean);
+
+  const body = { prompt, responses, tags, winner };
+
+  try {
+    const res = await fetch('/api/evaluations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error('Server error');
+    const ev = await res.json();
+    evaluations.unshift(ev);
+    renderHistory();
+    updateStats();
+    document.getElementById('clear-form-btn').click();
+    showToast('Evaluation saved!');
+  } catch (e) {
+    showToast('Failed to save. Is the server running?');
+  }
+});
+
+// ---- Load evaluations ----
+async function loadEvaluations() {
+  try {
+    const res = await fetch('/api/evaluations');
+    evaluations = await res.json();
+    renderHistory();
+    updateStats();
+  } catch {}
+}
+
+// ---- Render history ----
+function getFilteredSorted() {
+  const q = document.getElementById('search-input').value.toLowerCase();
+  const filterModel = document.getElementById('filter-model').value;
+  const filterTag = document.getElementById('filter-tag').value;
+  const sort = document.getElementById('sort-select').value;
+
+  let list = evaluations.filter(ev => {
+    const matchQ = !q || ev.prompt.toLowerCase().includes(q);
+    const matchModel = !filterModel || ev.responses.some(r => r.model === filterModel);
+    const matchTag = !filterTag || ev.tags.includes(filterTag);
+    return matchQ && matchModel && matchTag;
+  });
+
+  if (sort === 'newest') list = list.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  if (sort === 'oldest') list = list.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  if (sort === 'rating-high' || sort === 'rating-low') {
+    list = list.sort((a, b) => {
+      const avgRating = ev => {
+        const rated = ev.responses.filter(r => r.rating != null);
+        return rated.length ? rated.reduce((s, r) => s + r.rating, 0) / rated.length : 0;
+      };
+      return sort === 'rating-high' ? avgRating(b) - avgRating(a) : avgRating(a) - avgRating(b);
+    });
+  }
+  return list;
+}
+
+function renderHistory() {
+  const container = document.getElementById('history-list');
+  const empty = document.getElementById('empty-state');
+  const list = getFilteredSorted();
+
+  if (list.length === 0) {
+    empty.style.display = '';
+    container.querySelectorAll('.eval-card').forEach(el => el.remove());
+    return;
+  }
+  empty.style.display = 'none';
+
+  // Remove old cards
+  container.querySelectorAll('.eval-card').forEach(el => el.remove());
+
+  list.forEach(ev => {
+    const card = document.createElement('div');
+    card.className = 'eval-card card fade-in';
+    card.dataset.id = ev.id;
+
+    const date = new Date(ev.created_at).toLocaleString();
+    const tagsHtml = ev.tags.map(t =>
+      `<span class="text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full">${t}</span>`
+    ).join('');
+
+    const responsesHtml = ev.responses.map(r => {
+      const stars = r.rating ? '★'.repeat(r.rating) + '☆'.repeat(5 - r.rating) : '—';
+      const isWinner = ev.winner === r.model;
+      return `
+        <div class="flex-1 min-w-48 border border-slate-200 dark:border-slate-700 rounded-xl p-3 bg-slate-50 dark:bg-slate-900 ${isWinner ? 'ring-2 ring-emerald-400' : ''}">
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-semibold text-sm text-slate-700 dark:text-slate-200">${r.model}</span>
+            ${isWinner ? '<span class="text-xs bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full">Winner</span>' : ''}
+          </div>
+          <p class="text-sm text-slate-600 dark:text-slate-400 whitespace-pre-wrap line-clamp-4">${r.text || '<em class="text-slate-400">No response text</em>'}</p>
+          <div class="mt-2 flex items-center justify-between text-sm">
+            <span class="text-amber-400">${stars}</span>
+            ${r.notes ? `<span class="text-xs text-slate-400 italic truncate max-w-32">${r.notes}</span>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    card.innerHTML = `
+      <div class="flex items-start justify-between gap-4 mb-3">
+        <div class="flex-1 min-w-0">
+          <p class="font-medium text-slate-800 dark:text-slate-100 mb-1">${ev.prompt}</p>
+          <div class="flex flex-wrap gap-1.5">${tagsHtml}</div>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <span class="text-xs text-slate-400">${date}</span>
+          <button class="delete-btn text-slate-300 hover:text-red-400 transition-colors" title="Delete" data-id="${ev.id}">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-3">${responsesHtml}</div>
+    `;
+
+    card.querySelector('.delete-btn').addEventListener('click', async (e) => {
+      const id = e.currentTarget.dataset.id;
+      if (!confirm('Delete this evaluation?')) return;
+      try {
+        await fetch(`/api/evaluations/${id}`, { method: 'DELETE' });
+        evaluations = evaluations.filter(ev => ev.id !== id);
+        renderHistory();
+        updateStats();
+        showToast('Deleted.');
+      } catch { showToast('Delete failed.'); }
+    });
+
+    container.appendChild(card);
+  });
+
+  // Update filter dropdowns
+  const allModels = [...new Set(evaluations.flatMap(ev => ev.responses.map(r => r.model)))];
+  const filterModel = document.getElementById('filter-model');
+  const currentModel = filterModel.value;
+  filterModel.innerHTML = '<option value="">All models</option>' +
+    allModels.map(m => `<option value="${m}" ${m === currentModel ? 'selected' : ''}>${m}</option>`).join('');
+
+  const allTags = [...new Set(evaluations.flatMap(ev => ev.tags))];
+  const filterTag = document.getElementById('filter-tag');
+  const currentTag = filterTag.value;
+  filterTag.innerHTML = '<option value="">All tags</option>' +
+    allTags.map(t => `<option value="${t}" ${t === currentTag ? 'selected' : ''}>${t}</option>`).join('');
+}
+
+// ---- Stats ----
+async function updateStats() {
+  try {
+    const res = await fetch('/api/stats');
+    const stats = await res.json();
+
+    document.getElementById('stat-total').textContent = stats.total_evaluations;
+    document.getElementById('sc-total').textContent = stats.total_evaluations;
+
+    const topWinner = Object.entries(stats.model_wins || {}).sort((a, b) => b[1] - a[1])[0];
+    document.getElementById('sc-winner').textContent = topWinner ? topWinner[0].split(' ')[0] : '—';
+
+    const avgVals = Object.values(stats.average_ratings || {});
+    const globalAvg = avgVals.length ? (avgVals.reduce((a, b) => a + b, 0) / avgVals.length).toFixed(1) : '—';
+    document.getElementById('sc-avg').textContent = avgVals.length ? `${globalAvg}/5` : '—';
+
+    document.getElementById('sc-models').textContent = Object.keys(stats.average_ratings || {}).length;
+  } catch {}
+}
+
+// ---- Filter listeners ----
+['search-input', 'filter-model', 'filter-tag', 'sort-select'].forEach(id => {
+  document.getElementById(id).addEventListener('input', renderHistory);
+});
+document.getElementById('filter-model').addEventListener('change', renderHistory);
+document.getElementById('filter-tag').addEventListener('change', renderHistory);
+document.getElementById('sort-select').addEventListener('change', renderHistory);
+
+// ---- Boot ----
+loadEvaluations();
+</script>
+</body>
+</html>
