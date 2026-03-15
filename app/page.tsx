@@ -33,8 +33,18 @@ interface BriefOutput {
   followUpEmail?: { subject: string; body: string };
 }
 
+interface SnapshotData {
+  revenue: string;
+  marketCap: string;
+  growth: string;
+  ceo: string;
+  founded: string;
+  employees: string;
+  description: string;
+}
+
 interface CompanyIntel {
-  snapshot?: string;
+  snapshot?: SnapshotData | string;
   painSignals?: string[];
   techStack?: string[];
   recentDevelopments?: string[];
@@ -51,6 +61,20 @@ interface StockData {
   low: number;
   volume: string;
   sparkline: number[];
+}
+
+function SectionDivider({ label }: { label: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '24px 0 16px 0' }}>
+      <span style={{
+        fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#cccccc',
+        letterSpacing: '0.1em', whiteSpace: 'nowrap',
+      }}>
+        {label}
+      </span>
+      <div style={{ flex: 1, height: '1px', background: '#e8e8e4' }} />
+    </div>
+  );
 }
 
 export default function Home() {
@@ -162,9 +186,11 @@ export default function Home() {
     }
   }, [agentState]);
 
-  // Build snapshot object from companyIntel string for SnapshotCard
+  // Build snapshot object for SnapshotCard — handle both string and object forms
   const snapshotObj = companyIntel?.snapshot
-    ? { revenue: '', marketCap: '', growth: '', ceo: '', founded: '', employees: '', description: companyIntel.snapshot }
+    ? typeof companyIntel.snapshot === 'string'
+      ? { revenue: '', marketCap: '', growth: '', ceo: '', founded: '', employees: '', description: companyIntel.snapshot }
+      : companyIntel.snapshot
     : null;
 
   // Build pain signals array from companyIntel for PainSignalsCard
@@ -227,12 +253,12 @@ export default function Home() {
                       }}>
                         {prospect}
                       </h2>
-                      {companyIntel?.snapshot && (
+                      {snapshotObj?.description && (
                         <p style={{
                           fontFamily: 'var(--font-geist)', fontSize: '12px', color: '#888',
                           margin: '4px 0 0 0', lineHeight: 1.5,
                         }}>
-                          {companyIntel.snapshot}
+                          {snapshotObj.description}
                         </p>
                       )}
                     </div>
@@ -246,6 +272,8 @@ export default function Home() {
                     </div>
                   </div>
                 </div>
+
+                <SectionDivider label="// ACCOUNT INTELLIGENCE" />
 
                 {/* Stock + Snapshot row */}
                 <div className="card-reveal" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
@@ -281,7 +309,7 @@ export default function Home() {
                         letterSpacing: '0.1em', textTransform: 'uppercase',
                         display: 'block', marginBottom: '12px',
                       }}>
-                        // recent developments
+                        {'// recent developments'}
                       </span>
                       {(companyIntel?.recentDevelopments || []).map((d, i) => (
                         <p key={i} style={{
@@ -308,6 +336,8 @@ export default function Home() {
                     <PainSignalsCard signals={painSignals} />
                   </div>
                 )}
+
+                <SectionDivider label="// CALL PREP" />
 
                 {/* Call-type-specific card */}
                 {callType === 'discovery' && brief.agenda && (

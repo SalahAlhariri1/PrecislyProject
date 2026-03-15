@@ -10,11 +10,20 @@ interface EmailCardProps {
   label: string;  // e.g. "// send this after" or "// rfp cover email"
 }
 
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '$1')       // **bold** → bold
+    .replace(/^- \[ \]/gm, '•')            // - [ ] → •
+    .replace(/^- /gm, '• ')                // - item → • item
+    .replace(/\*(.+?)\*/g, '$1');           // *italic* → italic
+}
+
 export default function EmailCard({ subject, body, label }: EmailCardProps) {
   const [copied, setCopied] = useState(false);
+  const cleanBody = stripMarkdown(body);
 
   const handleCopy = async () => {
-    const text = `Subject: ${subject}\n\n${body}`;
+    const text = `Subject: ${subject}\n\n${cleanBody}`;
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -70,7 +79,7 @@ export default function EmailCard({ subject, body, label }: EmailCardProps) {
             fontFamily: 'var(--font-geist-mono)', fontSize: '11px', color: '#1a1a1a',
             lineHeight: 1.8, margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
           }}>
-            {body}
+            {cleanBody}
           </pre>
         </div>
       </div>

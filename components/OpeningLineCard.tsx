@@ -25,10 +25,12 @@ export default function OpeningLineCard({ line }: OpeningLineCardProps) {
       <p
         style={{
           fontFamily: 'var(--font-geist)',
-          fontSize: '15px',
+          fontSize: '16px',
           color: '#1a1a1a',
           lineHeight: 1.6,
           margin: 0,
+          borderLeft: '3px solid #1a1a1a',
+          paddingLeft: '16px',
         }}
       >
         &ldquo;{line}&rdquo;

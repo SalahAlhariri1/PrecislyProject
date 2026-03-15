@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { getStockData, getCompanyOverview } from '@/lib/alphaVantage';
+import { getStockData } from '@/lib/alphaVantage';
 import { getCompanyNews } from '@/lib/newsApi';
 
 // ─── Types ──────────────────────────────────────────────
@@ -99,7 +99,19 @@ const TOOLS: Anthropic.Tool[] = [
         companyIntel: {
           type: 'object',
           properties: {
-            snapshot: { type: 'string' },
+            snapshot: {
+              type: 'object',
+              properties: {
+                revenue: { type: 'string', description: 'Annual revenue e.g. "$383B (FY2024)"' },
+                marketCap: { type: 'string', description: 'Market capitalization e.g. "$3.68T"' },
+                growth: { type: 'string', description: 'YoY revenue growth e.g. "+12%"' },
+                ceo: { type: 'string', description: 'CEO name' },
+                founded: { type: 'string', description: 'Year founded e.g. "1998"' },
+                employees: { type: 'string', description: 'Approximate headcount e.g. "~182,000"' },
+                description: { type: 'string', description: 'One-sentence company description' },
+              },
+              required: ['revenue', 'marketCap', 'growth', 'ceo', 'founded', 'employees', 'description'],
+            },
             painSignals: { type: 'array', items: { type: 'string' } },
             techStack: { type: 'array', items: { type: 'string' } },
             recentDevelopments: { type: 'array', items: { type: 'string' } },

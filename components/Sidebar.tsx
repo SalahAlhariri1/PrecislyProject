@@ -119,7 +119,7 @@ export default function Sidebar({ onRun, loading }: SidebarProps) {
           }}
         >
           <span style={{ fontSize: '8px', transform: profileOpen ? 'rotate(90deg)' : 'none', transition: '0.15s' }}>▶</span>
-          // your product
+          {'// your product'}
         </button>
 
         {profileOpen && (
@@ -187,7 +187,7 @@ export default function Sidebar({ onRun, loading }: SidebarProps) {
           fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#aaaaaa',
           letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 12px 0',
         }}>
-          // this call
+          {'// this call'}
         </p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>

@@ -32,15 +32,14 @@ export default function PainSignalsCard({ signals }: PainSignalsCardProps) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {signals.map((s, i) => (
           <div key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-            {/* Orange dot */}
+            {/* Orange square */}
             <span
               style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
+                width: '4px',
+                height: '4px',
                 background: '#f97316',
                 flexShrink: 0,
-                marginTop: '6px',
+                marginTop: '7px',
               }}
             />
             <div>
