@@ -1,7 +1,7 @@
 // POST /api/brief
 // Step 1: resolve company identity via Claude
 // Step 2: fetch stock (by ticker) + news (by name) in parallel
-// Step 3: generate snapshot + talking points via Claude
+// Step 3: generate deep SE intelligence brief via Claude
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getStockData, getCompanyOverview } from '@/lib/alphaVantage';
@@ -20,18 +20,25 @@ export async function POST(req: NextRequest) {
     // Step 1: resolve raw input → proper name + ticker + isPublic
     const resolved = await resolveCompany(rawInput);
 
-    // Step 2: fetch stock + overview + news in parallel using resolved info
+    // Step 2: fetch stock + overview + news in parallel
     const [stockResult, overviewResult, newsResult] = await Promise.all([
       getStockData(resolved.ticker, resolved.isPublic),
       resolved.ticker && resolved.isPublic ? getCompanyOverview(resolved.ticker) : Promise.resolve(null),
       getCompanyNews(resolved.name, resolved.ticker),
     ]);
 
-    // Step 3: generate snapshot + talking points with Claude
-    const headlines = newsResult.articles.map(a => a.title);
-    const claudeResult = await generateBrief(resolved.name, headlines);
+    // Build stock change string for Claude context
+    let stockChange = 'N/A';
+    if (!('error' in stockResult)) {
+      const sign = stockResult.change >= 0 ? '+' : '';
+      stockChange = `${sign}${stockResult.change.toFixed(2)} (${sign}${stockResult.changePercent.toFixed(2)}%)`;
+    }
 
-    // Override market cap with live Finnhub data; revenue/growth stay from Claude
+    // Step 3: generate deep brief with Claude
+    const headlines = newsResult.articles.map(a => a.title);
+    const claudeResult = await generateBrief(resolved.name, resolved.ticker, headlines, stockChange);
+
+    // Override market cap with live Finnhub data
     const snapshot = {
       ...claudeResult.snapshot,
       ...(overviewResult?.marketCap && { marketCap: overviewResult.marketCap }),
@@ -46,6 +53,12 @@ export async function POST(req: NextRequest) {
       stockError: 'error' in stockResult ? stockResult : null,
       news: newsResult,
       snapshot,
+      painSignals: claudeResult.painSignals,
+      techStack: claudeResult.techStack,
+      competitivePressure: claudeResult.competitivePressure,
+      decisionMakers: claudeResult.decisionMakers,
+      openingLine: claudeResult.openingLine,
+      redFlags: claudeResult.redFlags,
       talkingPoints: claudeResult.talkingPoints,
     };
 

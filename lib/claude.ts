@@ -1,15 +1,16 @@
 // Anthropic Claude API integration
-// Resolves company identity + generates snapshot + SE talking points
+// Resolves company identity + generates deep SE intelligence brief
 
 import Anthropic from '@anthropic-ai/sdk';
 
+// ─── Company Resolution ────────────────────────────────────────
+
 export interface CompanyResolution {
-  name: string;       // proper name e.g. 'Apple'
-  ticker: string | null; // stock ticker e.g. 'AAPL', or null if private
+  name: string;
+  ticker: string | null;
   isPublic: boolean;
 }
 
-// Step 1: resolve raw user input into structured company info
 export async function resolveCompany(input: string): Promise<CompanyResolution> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -33,6 +34,8 @@ name should be the proper company name e.g. 'Apple' not 'apple.com'. ticker is t
   return JSON.parse(text) as CompanyResolution;
 }
 
+// ─── Snapshot (still needed for the basics) ─────────────────────
+
 export interface CompanySnapshot {
   revenue: string;
   marketCap: string;
@@ -43,46 +46,123 @@ export interface CompanySnapshot {
   description: string;
 }
 
-export interface ClaudeResult {
-  snapshot: CompanySnapshot;
-  talkingPoints: [string, string, string];
+// ─── Deep Brief types ───────────────────────────────────────────
+
+export interface PainSignal {
+  signal: string;
+  why: string;
 }
 
-const SYSTEM_PROMPT = `You are a sales intelligence assistant for B2B Sales Engineers. Today's date is ${new Date().toISOString().split('T')[0]}. Given a company name and recent news, return a JSON object with this exact structure:
-{
-  snapshot: { revenue: string, marketCap: string, growth: string, ceo: string, founded: string, employees: string, description: string },
-  talkingPoints: [string, string, string]
+export interface TechStack {
+  likely: string[];
+  source: string;
 }
-For snapshot fields: always use the most recent fiscal year data available. For revenue and marketCap, include the fiscal year label e.g. "$391B (FY2024)". For marketCap, use the most recent estimate you have. For talkingPoints, write 1-2 sentence insights a Sales Engineer should use before a customer call. Focus on: their current strategic priorities, internal pressures, and how a vendor could add value. Be specific, not generic. Return only valid JSON, no markdown.`;
+
+export interface CompetitivePressure {
+  competitors: string[];
+  insight: string;
+}
+
+export interface DecisionMaker {
+  title: string;
+  focus: string;
+}
+
+export interface TalkingPoint {
+  point: string;
+  evidence: string;
+}
+
+export interface ClaudeResult {
+  snapshot: CompanySnapshot;
+  painSignals: PainSignal[];
+  techStack: TechStack;
+  competitivePressure: CompetitivePressure;
+  decisionMakers: DecisionMaker[];
+  openingLine: string;
+  redFlags: string[];
+  talkingPoints: TalkingPoint[];
+}
+
+// ─── System + user prompts ──────────────────────────────────────
+
+const SYSTEM_PROMPT = `You are a senior Sales Engineer with 15 years of B2B enterprise software experience. You think like a consultant, not a salesperson. Your job is to help another SE walk into a customer call already knowing things the customer hasn't told them yet. Today's date is ${new Date().toISOString().split('T')[0]}.`;
+
+function buildUserPrompt(
+  name: string,
+  ticker: string | null,
+  newsHeadlines: string[],
+  stockChange: string
+): string {
+  const headlinesStr = newsHeadlines.length > 0
+    ? newsHeadlines.map(h => `- ${h}`).join('\n')
+    : 'No recent headlines available';
+
+  return `Company: ${name}
+Ticker: ${ticker ?? 'N/A (private)'}
+Recent headlines:
+${headlinesStr}
+Stock change today: ${stockChange}
+
+Analyze this company and return JSON only, no markdown, with this exact structure:
+{
+  "snapshot": { "revenue": string, "marketCap": string, "growth": string, "ceo": string, "founded": string, "employees": string, "description": string },
+  "painSignals": [
+    { "signal": string, "why": string }
+  ],
+  "techStack": {
+    "likely": string[],
+    "source": string
+  },
+  "competitivePressure": {
+    "competitors": string[],
+    "insight": string
+  },
+  "decisionMakers": [
+    { "title": string, "focus": string }
+  ],
+  "openingLine": string,
+  "redFlags": string[],
+  "talkingPoints": [
+    { "point": string, "evidence": string }
+  ]
+}
+
+Rules:
+- snapshot: use the most recent fiscal year data you know. For revenue and marketCap include the year label.
+- painSignals: 3 specific signals that suggest THIS company has a problem right now. Each signal needs a 'why' explaining what it means for a vendor conversation.
+- techStack.likely: infer their probable stack from their industry, size, and what companies like them typically use. Be specific (e.g. 'Salesforce CRM', 'AWS', 'Snowflake') not generic (e.g. 'cloud provider').
+- competitivePressure.insight: one sharp observation about how their competitive position creates urgency or opportunity for a vendor.
+- decisionMakers: the 3 most likely buyer titles at this company and what each one cares about professionally.
+- openingLine: one sentence an SE could literally say at the start of a call to immediately show they've done their homework. Make it specific to current events, not generic flattery.
+- redFlags: 1-2 things that could kill this deal (budget freeze signals, recent layoffs, leadership turnover, etc). Empty array if none detected.
+- talkingPoints: 3 researched talking points. Each needs an 'evidence' string citing what data supports it.
+
+Return only valid JSON.`;
+}
+
+// ─── Main export ────────────────────────────────────────────────
 
 export async function generateBrief(
   companyName: string,
-  newsHeadlines: string[]
+  ticker: string | null,
+  newsHeadlines: string[],
+  stockChange: string
 ): Promise<ClaudeResult> {
-  const client = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  });
-
-  const newsContext =
-    newsHeadlines.length > 0
-      ? `\n\nRecent news headlines:\n${newsHeadlines.map(h => `- ${h}`).join('\n')}`
-      : '\n\nNo recent news available.';
-
-  const userMessage = `Company: ${companyName}${newsContext}\n\nGenerate the sales intelligence brief.`;
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
+    max_tokens: 2048,
     system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: userMessage }],
+    messages: [{
+      role: 'user',
+      content: buildUserPrompt(companyName, ticker, newsHeadlines, stockChange),
+    }],
   });
 
   const raw = response.content[0].type === 'text' ? response.content[0].text : '';
-
-  // Strip markdown code fences if Claude wraps the response in ```json ... ```
   const text = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
 
-  // Parse the JSON response
-  const parsed: ClaudeResult = JSON.parse(text);
-  return parsed;
+  return JSON.parse(text) as ClaudeResult;
 }

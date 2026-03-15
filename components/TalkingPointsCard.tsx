@@ -1,7 +1,12 @@
-// TalkingPointsCard — Claude-generated SE talking points numbered 01 02 03
+// TalkingPointsCard — evidence-backed talking points numbered 01 02 03
+
+interface TalkingPoint {
+  point: string;
+  evidence: string;
+}
 
 interface TalkingPointsCardProps {
-  points: [string, string, string];
+  points: TalkingPoint[];
 }
 
 export default function TalkingPointsCard({ points }: TalkingPointsCardProps) {
@@ -25,16 +30,9 @@ export default function TalkingPointsCard({ points }: TalkingPointsCardProps) {
       </div>
 
       {/* Points */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        {points.map((point, i) => (
-          <div
-            key={i}
-            style={{
-              display: 'flex',
-              gap: '14px',
-              alignItems: 'flex-start',
-            }}
-          >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {points.map((tp, i) => (
+          <div key={i} style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
             {/* Number */}
             <span
               style={{
@@ -49,18 +47,31 @@ export default function TalkingPointsCard({ points }: TalkingPointsCardProps) {
               {String(i + 1).padStart(2, '0')}
             </span>
 
-            {/* Text */}
-            <p
-              style={{
-                fontFamily: 'var(--font-geist)',
-                fontSize: '12px',
-                color: '#555',
-                lineHeight: 1.6,
-                margin: 0,
-              }}
-            >
-              {point}
-            </p>
+            {/* Content */}
+            <div>
+              <p
+                style={{
+                  fontFamily: 'var(--font-geist)',
+                  fontSize: '13px',
+                  color: '#1a1a1a',
+                  lineHeight: 1.6,
+                  margin: 0,
+                }}
+              >
+                {tp.point}
+              </p>
+              <p
+                style={{
+                  fontFamily: 'var(--font-geist-mono)',
+                  fontSize: '10px',
+                  color: '#aaaaaa',
+                  margin: '4px 0 0 0',
+                  lineHeight: 1.5,
+                }}
+              >
+                WHY: {tp.evidence}
+              </p>
+            </div>
           </div>
         ))}
       </div>
