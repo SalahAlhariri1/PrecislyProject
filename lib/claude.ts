@@ -1,0 +1,55 @@
+// Anthropic Claude API integration
+// Generates company snapshot + SE talking points
+
+import Anthropic from '@anthropic-ai/sdk';
+
+export interface CompanySnapshot {
+  revenue: string;
+  marketCap: string;
+  growth: string;
+  ceo: string;
+  founded: string;
+  employees: string;
+  description: string;
+}
+
+export interface ClaudeResult {
+  snapshot: CompanySnapshot;
+  talkingPoints: [string, string, string];
+}
+
+const SYSTEM_PROMPT = `You are a sales intelligence assistant for B2B Sales Engineers. Given a company name and recent news, return a JSON object with this exact structure:
+{
+  snapshot: { revenue: string, marketCap: string, growth: string, ceo: string, founded: string, employees: string, description: string },
+  talkingPoints: [string, string, string]
+}
+For talkingPoints, write 1-2 sentence insights a Sales Engineer should use before a customer call. Focus on: their current strategic priorities, internal pressures, and how a vendor could add value. Be specific, not generic. Return only valid JSON, no markdown.`;
+
+export async function generateBrief(
+  companyName: string,
+  newsHeadlines: string[]
+): Promise<ClaudeResult> {
+  const client = new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY,
+  });
+
+  const newsContext =
+    newsHeadlines.length > 0
+      ? `\n\nRecent news headlines:\n${newsHeadlines.map(h => `- ${h}`).join('\n')}`
+      : '\n\nNo recent news available.';
+
+  const userMessage = `Company: ${companyName}${newsContext}\n\nGenerate the sales intelligence brief.`;
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-5',
+    max_tokens: 1024,
+    system: SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: userMessage }],
+  });
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+
+  // Parse the JSON response
+  const parsed: ClaudeResult = JSON.parse(text);
+  return parsed;
+}
