@@ -64,10 +64,15 @@ export async function getCompanyNews(companyName: string): Promise<NewsResult> {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const fromDate = thirtyDaysAgo.toISOString().split('T')[0];
 
-    const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(`"${companyName}"`)}&from=${fromDate}&sortBy=publishedAt&pageSize=5&language=en&apiKey=${apiKey}`;
+    const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(companyName)}&from=${fromDate}&sortBy=publishedAt&pageSize=5&language=en&apiKey=${apiKey}`;
 
-    const res = await fetch(url, { next: { revalidate: 0 } });
+    const res = await fetch(url, {
+      next: { revalidate: 0 },
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    });
     const data = await res.json();
+
+    console.log('[newsApi] status:', data.status, '| code:', data.code, '| message:', data.message, '| totalResults:', data.totalResults);
 
     if (data.status !== 'ok') {
       return { articles: [], error: data.message ?? 'NewsAPI error' };
