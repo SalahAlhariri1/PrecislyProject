@@ -88,6 +88,7 @@ export default function Sidebar({ onRun, loading }: SidebarProps) {
         height: '100vh',
         position: 'sticky',
         top: 0,
+        zIndex: 10,
         background: '#ffffff',
         borderRight: '1px solid #e8e8e4',
         padding: '24px 20px',
