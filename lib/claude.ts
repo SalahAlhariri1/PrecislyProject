@@ -1,7 +1,37 @@
 // Anthropic Claude API integration
-// Generates company snapshot + SE talking points
+// Resolves company identity + generates snapshot + SE talking points
 
 import Anthropic from '@anthropic-ai/sdk';
+
+export interface CompanyResolution {
+  name: string;       // proper name e.g. 'Apple'
+  ticker: string | null; // stock ticker e.g. 'AAPL', or null if private
+  isPublic: boolean;
+}
+
+// Step 1: resolve raw user input into structured company info
+export async function resolveCompany(input: string): Promise<CompanyResolution> {
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 256,
+    messages: [{
+      role: 'user',
+      content: `Given this input: '${input}', return JSON only with no markdown:
+{
+  "name": string,
+  "ticker": string | null,
+  "isPublic": boolean
+}
+name should be the proper company name e.g. 'Apple' not 'apple.com'. ticker is the stock ticker symbol e.g. 'AAPL', or null if private.`,
+    }],
+  });
+
+  const raw = response.content[0].type === 'text' ? response.content[0].text : '';
+  const text = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  return JSON.parse(text) as CompanyResolution;
+}
 
 export interface CompanySnapshot {
   revenue: string;

@@ -1,35 +1,39 @@
 // POST /api/brief
-// Orchestrates Alpha Vantage + NewsAPI + Claude to produce a full company brief
+// Step 1: resolve company identity via Claude
+// Step 2: fetch stock (by ticker) + news (by name) in parallel
+// Step 3: generate snapshot + talking points via Claude
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getStockData } from '@/lib/alphaVantage';
 import { getCompanyNews } from '@/lib/newsApi';
-import { generateBrief } from '@/lib/claude';
+import { resolveCompany, generateBrief } from '@/lib/claude';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const company: string = (body.company ?? '').trim();
+    const rawInput: string = (body.company ?? '').trim();
 
-    if (!company) {
+    if (!rawInput) {
       return NextResponse.json({ error: 'Company name is required' }, { status: 400 });
     }
 
-    // Fire stock + news in parallel, then pass to Claude
+    // Step 1: resolve raw input → proper name + ticker + isPublic
+    const resolved = await resolveCompany(rawInput);
+
+    // Step 2: fetch stock + news in parallel using resolved info
     const [stockResult, newsResult] = await Promise.all([
-      getStockData(company),
-      getCompanyNews(company),
+      getStockData(resolved.ticker, resolved.isPublic),
+      getCompanyNews(resolved.name),
     ]);
 
-    // Extract headlines for Claude context
+    // Step 3: generate snapshot + talking points with Claude
     const headlines = newsResult.articles.map(a => a.title);
+    const claudeResult = await generateBrief(resolved.name, headlines);
 
-    // Generate snapshot + talking points with Claude
-    const claudeResult = await generateBrief(company, headlines);
-
-    // Combine everything
     const response = {
-      company,
+      company: resolved.name,       // display the proper name, not raw input
+      ticker: resolved.ticker,
+      isPublic: resolved.isPublic,
       fetchedAt: new Date().toUTCString(),
       stock: 'error' in stockResult ? null : stockResult,
       stockError: 'error' in stockResult ? stockResult : null,

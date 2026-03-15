@@ -19,23 +19,6 @@ export interface StockError {
 
 export type StockResult = StockQuote | StockError;
 
-// Search for ticker symbol by company name
-async function searchTicker(companyName: string): Promise<string | null> {
-  const apiKey = process.env.ALPHA_VANTAGE_API_KEY;
-  if (!apiKey) return null;
-
-  const url = `https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${encodeURIComponent(companyName)}&apikey=${apiKey}`;
-  const res = await fetch(url, { next: { revalidate: 0 } });
-  const data = await res.json();
-
-  const matches = data?.bestMatches;
-  if (!matches || matches.length === 0) return null;
-
-  // Return the top US-listed match
-  const usMatch = matches.find((m: { '4. region': string; '1. symbol': string }) => m['4. region'] === 'United States');
-  return usMatch?.['1. symbol'] ?? matches[0]?.['1. symbol'] ?? null;
-}
-
 // Fetch current quote
 async function fetchQuote(symbol: string): Promise<StockQuote | null> {
   const apiKey = process.env.ALPHA_VANTAGE_API_KEY;
@@ -84,11 +67,12 @@ async function fetchSparkline(symbol: string): Promise<number[]> {
   return closes;
 }
 
-// Main export: get full stock data for a company name
-export async function getStockData(companyName: string): Promise<StockResult> {
+// Main export: get full stock data using a pre-resolved ticker from Claude
+export async function getStockData(ticker: string | null, isPublic: boolean): Promise<StockResult> {
+  if (!isPublic || !ticker) return { error: true, reason: 'private' };
+
   try {
-    const symbol = await searchTicker(companyName);
-    if (!symbol) return { error: true, reason: 'not_found' };
+    const symbol = ticker;
 
     const [quote, sparkline] = await Promise.all([
       fetchQuote(symbol),
