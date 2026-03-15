@@ -191,12 +191,12 @@ You have access to tools. Use them proactively and intelligently:
 - Look for funding, layoffs, leadership changes, product launches
 - Cross-reference everything against the SE's product strengths
 
-Research process:
+Research process (be efficient — aim for 4-6 total tool calls, not more):
 1. Start with a broad news search
-2. Dig into 2-3 most relevant results
+2. Optionally fetch one highly relevant article
 3. Search job postings to infer internal priorities
-4. Search for tech stack
-5. Once you have strong signal (minimum 4 tool calls), call generate_brief
+4. Get stock data if public company
+5. Once you have strong signal, call generate_brief IMMEDIATELY — do not over-research
 
 Quality bar:
 - Every talking point must reference something specific you found
@@ -204,7 +204,7 @@ Quality bar:
 - The opening line must reference a specific recent event
 - Demo script acts must map to specific pain signals you discovered
 
-When you have enough intelligence, call generate_brief with everything you've learned. Do not call it too early — do the research first.
+When you have enough intelligence (after 4-6 tool calls), call generate_brief immediately. Do NOT keep searching — wrap up quickly. Speed matters.
 
 Today's date is ${new Date().toISOString().split('T')[0]}.`;
 
@@ -343,7 +343,7 @@ export async function POST(req: NextRequest) {
         ];
 
         let iterations = 0;
-        const MAX_ITERATIONS = 10;
+        const MAX_ITERATIONS = 6;
 
         while (iterations < MAX_ITERATIONS) {
           iterations++;
@@ -429,10 +429,16 @@ export async function POST(req: NextRequest) {
               summary: summarizeResult(block.name, result),
             });
 
+            // Truncate large results to keep context manageable
+            let resultStr = JSON.stringify(result);
+            if (resultStr.length > 4000) {
+              resultStr = resultStr.slice(0, 4000) + '... [truncated]';
+            }
+
             toolResults.push({
               type: 'tool_result',
               tool_use_id: block.id,
-              content: JSON.stringify(result),
+              content: resultStr,
             });
           }
 
