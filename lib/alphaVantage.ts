@@ -29,6 +29,7 @@ async function fetchQuote(symbol: string): Promise<StockQuote | null> {
   const data = await res.json();
 
   const q = data?.['Global Quote'];
+  console.log('[alphaVantage] quote keys:', Object.keys(q ?? {}), '| note:', data?.Note ?? data?.Information ?? 'none');
   if (!q || !q['05. price']) return null;
 
   const price = parseFloat(q['05. price']);
