@@ -47,7 +47,10 @@ export async function generateBrief(
     messages: [{ role: 'user', content: userMessage }],
   });
 
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+  const raw = response.content[0].type === 'text' ? response.content[0].text : '';
+
+  // Strip markdown code fences if Claude wraps the response in ```json ... ```
+  const text = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
 
   // Parse the JSON response
   const parsed: ClaudeResult = JSON.parse(text);
