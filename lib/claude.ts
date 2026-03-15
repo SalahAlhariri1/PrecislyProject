@@ -48,12 +48,12 @@ export interface ClaudeResult {
   talkingPoints: [string, string, string];
 }
 
-const SYSTEM_PROMPT = `You are a sales intelligence assistant for B2B Sales Engineers. Given a company name and recent news, return a JSON object with this exact structure:
+const SYSTEM_PROMPT = `You are a sales intelligence assistant for B2B Sales Engineers. Today's date is ${new Date().toISOString().split('T')[0]}. Given a company name and recent news, return a JSON object with this exact structure:
 {
   snapshot: { revenue: string, marketCap: string, growth: string, ceo: string, founded: string, employees: string, description: string },
   talkingPoints: [string, string, string]
 }
-For talkingPoints, write 1-2 sentence insights a Sales Engineer should use before a customer call. Focus on: their current strategic priorities, internal pressures, and how a vendor could add value. Be specific, not generic. Return only valid JSON, no markdown.`;
+For snapshot fields: always use the most recent fiscal year data available. For revenue and marketCap, include the fiscal year label e.g. "$391B (FY2024)". For marketCap, use the most recent estimate you have. For talkingPoints, write 1-2 sentence insights a Sales Engineer should use before a customer call. Focus on: their current strategic priorities, internal pressures, and how a vendor could add value. Be specific, not generic. Return only valid JSON, no markdown.`;
 
 export async function generateBrief(
   companyName: string,
