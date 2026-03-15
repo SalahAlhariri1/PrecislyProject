@@ -61,7 +61,7 @@ export async function getCompanyNews(companyName: string): Promise<NewsResult> {
 
   try {
     const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 28);
     const fromDate = thirtyDaysAgo.toISOString().split('T')[0];
 
     const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(companyName)}&from=${fromDate}&sortBy=publishedAt&pageSize=5&language=en&apiKey=${apiKey}`;
