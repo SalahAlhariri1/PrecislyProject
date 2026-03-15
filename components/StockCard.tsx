@@ -65,7 +65,7 @@ export default function StockCard({ stock, isPrivate }: StockCardProps) {
           stock
         </span>
         <span style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#cccccc', letterSpacing: '0.05em' }}>
-          alpha vantage
+          finnhub
         </span>
       </div>
 

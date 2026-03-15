@@ -31,12 +31,10 @@ export async function POST(req: NextRequest) {
     const headlines = newsResult.articles.map(a => a.title);
     const claudeResult = await generateBrief(resolved.name, headlines);
 
-    // Override Claude's snapshot with live Alpha Vantage fundamentals where available
+    // Override market cap with live Finnhub data; revenue/growth stay from Claude
     const snapshot = {
       ...claudeResult.snapshot,
       ...(overviewResult?.marketCap && { marketCap: overviewResult.marketCap }),
-      ...(overviewResult?.revenue    && { revenue: overviewResult.revenue }),
-      ...(overviewResult?.growth     && { growth: overviewResult.growth }),
     };
 
     const response = {

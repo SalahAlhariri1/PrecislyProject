@@ -261,7 +261,7 @@ export default function Home() {
                     letterSpacing: '0.05em',
                   }}
                 >
-                  powered by claude + newsapi + alpha vantage
+                  powered by claude + newsapi + finnhub
                 </span>
 
                 <div style={{ display: 'flex', gap: '8px' }}>

@@ -1,6 +1,6 @@
-// Alpha Vantage API integration
-// 2 calls per brief: GLOBAL_QUOTE (price) + OVERVIEW (fundamentals)
-// Sparkline removed to stay within 25 req/day free tier limit
+// Finnhub API integration (replaces Alpha Vantage)
+// 60 calls/minute on free tier — no daily cap
+// 2 calls per brief: /quote (price) + /stock/profile2 (market cap)
 
 export interface StockQuote {
   symbol: string;
@@ -26,76 +26,68 @@ export interface CompanyOverview {
   growth: string;
 }
 
-// Fetch current quote (1 API call)
-async function fetchQuote(symbol: string): Promise<StockQuote | null> {
-  const apiKey = process.env.ALPHA_VANTAGE_API_KEY;
-  if (!apiKey) return null;
+const fmt = (n: number) => {
+  if (n >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
+  if (n >= 1e9)  return `$${(n / 1e9).toFixed(0)}B`;
+  if (n >= 1e6)  return `$${(n / 1e6).toFixed(0)}M`;
+  return `$${n.toLocaleString()}`;
+};
 
-  const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${apiKey}`;
-  const res = await fetch(url, { next: { revalidate: 0 } });
-  const data = await res.json();
-
-  const q = data?.['Global Quote'];
-  if (data?.Note || data?.Information) {
-    console.log('[alphaVantage] rate limited:', data.Note ?? data.Information);
-    return null;
-  }
-  if (!q || !q['05. price']) return null;
-
-  return {
-    symbol,
-    price: parseFloat(q['05. price']),
-    change: parseFloat(q['09. change']),
-    changePercent: parseFloat(q['10. change percent']?.replace('%', '') ?? '0'),
-    high: parseFloat(q['03. high']),
-    low: parseFloat(q['04. low']),
-    volume: parseInt(q['06. volume']).toLocaleString(),
-    sparkline: [], // sparkline removed to save API calls
-  };
-}
-
-// Fetch live fundamentals (1 API call)
-export async function getCompanyOverview(ticker: string): Promise<CompanyOverview | null> {
-  const apiKey = process.env.ALPHA_VANTAGE_API_KEY;
-  if (!apiKey) return null;
-
-  try {
-    const url = `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${ticker}&apikey=${apiKey}`;
-    const res = await fetch(url, { next: { revalidate: 0 } });
-    const data = await res.json();
-
-    if (!data.MarketCapitalization) return null;
-
-    const fmt = (n: number) => {
-      if (n >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
-      if (n >= 1e9)  return `$${(n / 1e9).toFixed(0)}B`;
-      if (n >= 1e6)  return `$${(n / 1e6).toFixed(0)}M`;
-      return `$${n.toLocaleString()}`;
-    };
-
-    const marketCapRaw = parseInt(data.MarketCapitalization);
-    const revenueRaw   = parseInt(data.RevenueTTM);
-    const growthRaw    = parseFloat(data.QuarterlyRevenueGrowthYOY);
-
-    return {
-      marketCap: fmt(marketCapRaw),
-      revenue:   `${fmt(revenueRaw)} (TTM)`,
-      growth:    isNaN(growthRaw) ? 'N/A' : `${(growthRaw * 100).toFixed(1)}% YoY (TTM)`,
-    };
-  } catch {
-    return null;
-  }
-}
-
-// Main export: get stock quote using pre-resolved ticker
+// GET /quote — real-time price data
 export async function getStockData(ticker: string | null, isPublic: boolean): Promise<StockResult> {
   if (!isPublic || !ticker) return { error: true, reason: 'private' };
 
+  const apiKey = process.env.FINNHUB_API_KEY;
+  if (!apiKey) return { error: true, reason: 'api_error' };
+
   try {
-    const quote = await fetchQuote(ticker);
-    if (!quote) return { error: true, reason: 'api_error' };
-    return quote;
+    const res = await fetch(
+      `https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${apiKey}`,
+      { next: { revalidate: 0 } }
+    );
+    const data = await res.json();
+
+    // c = current price; if 0 or missing, ticker not found
+    if (!data.c || data.c === 0) return { error: true, reason: 'not_found' };
+
+    return {
+      symbol: ticker,
+      price: data.c,
+      change: data.d ?? 0,
+      changePercent: data.dp ?? 0,
+      high: data.h ?? 0,
+      low: data.l ?? 0,
+      volume: 'N/A',   // requires premium on Finnhub
+      sparkline: [],
+    };
   } catch {
     return { error: true, reason: 'api_error' };
+  }
+}
+
+// GET /stock/profile2 — market cap + company info
+export async function getCompanyOverview(ticker: string): Promise<CompanyOverview | null> {
+  const apiKey = process.env.FINNHUB_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const res = await fetch(
+      `https://finnhub.io/api/v1/stock/profile2?symbol=${ticker}&token=${apiKey}`,
+      { next: { revalidate: 0 } }
+    );
+    const data = await res.json();
+
+    // marketCapitalization is in millions USD
+    if (!data.marketCapitalization) return null;
+
+    const marketCapRaw = data.marketCapitalization * 1e6;
+
+    return {
+      marketCap: fmt(marketCapRaw),
+      revenue:   '',   // will be filled by Claude (Finnhub free tier lacks TTM revenue)
+      growth:    '',
+    };
+  } catch {
+    return null;
   }
 }
