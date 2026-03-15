@@ -66,14 +66,12 @@ export default function Sidebar({ onRun, loading }: SidebarProps) {
   }, []);
 
   const handleSave = () => {
-    console.log('[Sidebar] SAVE clicked');
     localStorage.setItem(LS_KEY, JSON.stringify(profile));
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
 
   const handleRun = () => {
-    console.log('[Sidebar] RUN clicked, prospect:', JSON.stringify(call.prospect), 'loading:', loading);
     if (!call.prospect.trim() || loading) return;
     onRun(profile, call);
   };
@@ -167,11 +165,10 @@ export default function Sidebar({ onRun, loading }: SidebarProps) {
 
             <button
               onClick={handleSave}
+              type="button"
               style={{
                 fontFamily: 'var(--font-geist-mono)', fontSize: '10px', letterSpacing: '0.1em',
                 width: '100%', padding: '10px', borderRadius: '6px', border: 'none', cursor: 'pointer',
-                pointerEvents: 'auto',
-                position: 'relative',
                 background: saved ? '#16a34a' : '#1a1a1a', color: '#fff', transition: 'background 0.15s',
               }}
             >
@@ -197,10 +194,7 @@ export default function Sidebar({ onRun, loading }: SidebarProps) {
           <div>
             <label style={labelStyle}>prospect company</label>
             <input style={inputStyle} placeholder="Salesforce" value={call.prospect}
-              onChange={e => {
-                console.log('[Sidebar] prospect input:', e.target.value);
-                setCall(prev => ({ ...prev, prospect: e.target.value }));
-              }} />
+              onChange={e => setCall(prev => ({ ...prev, prospect: e.target.value }))} />
           </div>
           <div>
             <label style={labelStyle}>call type</label>
@@ -223,14 +217,13 @@ export default function Sidebar({ onRun, loading }: SidebarProps) {
 
           <button
             onClick={handleRun}
+            type="button"
             style={{
               fontFamily: 'var(--font-geist-mono)', fontSize: '11px', letterSpacing: '0.1em',
               width: '100%', padding: '12px', borderRadius: '6px', border: 'none',
               background: loading ? '#555' : '#1a1a1a', color: '#fff',
               cursor: 'pointer',
-              pointerEvents: 'auto',
               transition: 'background 0.15s',
-              position: 'relative',
             }}
           >
             {loading ? '[ RUNNING... ]' : '[ RUN AGENT ]'}

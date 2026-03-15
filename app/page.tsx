@@ -1,123 +1,101 @@
 'use client';
 
 // brief.dev — SE Agent
-// Split layout: sidebar (product config + call setup) | main (intelligence brief + call prep)
+// Split layout: sidebar (product config + call setup) | main (agent thinking + brief cards)
 
-import { useState } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
 import type { SEProfile, CallConfig } from '@/components/Sidebar';
-import CompanyHeader from '@/components/CompanyHeader';
+import AgentThinkingPanel from '@/components/AgentThinkingPanel';
+import type { AgentLog } from '@/components/AgentThinkingPanel';
 import StockCard from '@/components/StockCard';
 import SnapshotCard from '@/components/SnapshotCard';
-import NewsCard from '@/components/NewsCard';
+import OpeningLineCard from '@/components/OpeningLineCard';
 import PainSignalsCard from '@/components/PainSignalsCard';
 import TechStackCard from '@/components/TechStackCard';
-import RedFlagsCard from '@/components/RedFlagsCard';
-import OpeningLineCard from '@/components/OpeningLineCard';
-import TalkingPointsCard from '@/components/TalkingPointsCard';
 import ObjectionsCard from '@/components/ObjectionsCard';
 import EmailCard from '@/components/EmailCard';
 import DiscoveryAgendaCard from '@/components/DiscoveryAgendaCard';
 import DemoScriptCard from '@/components/DemoScriptCard';
 import RFPAnswerBankCard from '@/components/RFPAnswerBankCard';
-import SkeletonCard from '@/components/SkeletonCard';
 
 // ─── Types ──────────────────────────────────────────────
 
-type RevealStage =
-  | 'idle' | 'header' | 'stock' | 'techstack' | 'news'
-  | 'opening' | 'pain' | 'talking'
-  | 'agent-1' | 'agent-2' | 'agent-3'
-  | 'done';
+type AgentState = 'idle' | 'running' | 'complete' | 'error';
 
-interface BriefData {
-  company: string;
-  fetchedAt: string;
-  stock: {
-    symbol: string; price: number; change: number; changePercent: number;
-    high: number; low: number; volume: string; sparkline: number[];
-  } | null;
-  stockError: { error: true; reason: string } | null;
-  news: { articles: { title: string; source: string; url: string; publishedAt: string; sentiment: 'positive' | 'negative' | 'neutral' }[]; error?: string };
-  snapshot: { revenue: string; marketCap: string; growth: string; ceo: string; founded: string; employees: string; description: string };
-  painSignals: { signal: string; why: string }[];
-  techStack: { likely: string[]; source: string };
-  competitivePressure: { competitors: string[]; insight: string };
-  decisionMakers: { title: string; focus: string }[];
-  openingLine: string;
-  redFlags: string[];
-  talkingPoints: { point: string; evidence: string }[];
-}
-
-interface AgentData {
-  callType: 'discovery' | 'demo' | 'rfp';
-  // Discovery
+interface BriefOutput {
+  openingLine?: string;
   agenda?: { item: string; question: string; why: string }[];
-  // Demo
   demoScript?: { act: string; whatToShow: string; whatToSay: string; addresses: string }[];
-  // RFP
   answerBank?: { question: string; answer: string; tailor: string }[];
-  // Shared
   objections?: { objection: string; counter: string; confidence: 'HIGH' | 'MED' | 'LOW' }[];
   followUpEmail?: { subject: string; body: string };
-  coverEmail?: { subject: string; body: string };
 }
 
-const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+interface CompanyIntel {
+  snapshot?: string;
+  painSignals?: string[];
+  techStack?: string[];
+  recentDevelopments?: string[];
+  jobPostingInsights?: string[];
+  competitiveLandscape?: string;
+}
+
+interface StockData {
+  symbol: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  high: number;
+  low: number;
+  volume: string;
+  sparkline: number[];
+}
 
 export default function Home() {
-  const [loading, setLoading] = useState(false);
+  const [agentState, setAgentState] = useState<AgentState>('idle');
+  const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
+  const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [brief, setBrief] = useState<BriefData | null>(null);
-  const [agent, setAgent] = useState<AgentData | null>(null);
-  const [stage, setStage] = useState<RevealStage>('idle');
+
+  const [brief, setBrief] = useState<BriefOutput | null>(null);
+  const [companyIntel, setCompanyIntel] = useState<CompanyIntel | null>(null);
+  const [stockData, setStockData] = useState<StockData | null>(null);
+  const [stockError, setStockError] = useState<{ error: true; reason: string } | null>(null);
   const [callType, setCallType] = useState<'discovery' | 'demo' | 'rfp'>('discovery');
+  const [prospect, setProspect] = useState('');
 
-  const stageOrder: RevealStage[] = [
-    'header', 'stock', 'techstack', 'news', 'opening', 'pain', 'talking',
-    'agent-1', 'agent-2', 'agent-3', 'done',
-  ];
-  const isRevealed = (s: RevealStage) => stageOrder.indexOf(stage) >= stageOrder.indexOf(s);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const handleRun = async (profile: SEProfile, call: CallConfig) => {
-    if (loading) return;
+  // Timer effect
+  useEffect(() => {
+    if (agentState === 'running') {
+      setElapsed(0);
+      timerRef.current = setInterval(() => setElapsed(prev => prev + 1), 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [agentState]);
 
-    setLoading(true);
+  const handleRun = useCallback(async (profile: SEProfile, call: CallConfig) => {
+    if (agentState === 'running') return;
+
+    setAgentState('running');
+    setAgentLogs([]);
     setError(null);
     setBrief(null);
-    setAgent(null);
-    setStage('idle');
+    setCompanyIntel(null);
+    setStockData(null);
+    setStockError(null);
     setCallType(call.callType);
+    setProspect(call.prospect);
 
     try {
-      // Phase 1: get company intelligence
-      const briefRes = await fetch('/api/brief', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company: call.prospect }),
-      });
-
-      if (!briefRes.ok) {
-        const err = await briefRes.json();
-        throw new Error(err.error ?? 'Brief request failed');
-      }
-
-      const briefJson: BriefData = await briefRes.json();
-      setBrief(briefJson);
-
-      // Reveal company data cards
-      for (const s of ['header', 'stock', 'techstack', 'news', 'opening', 'pain', 'talking'] as RevealStage[]) {
-        setStage(s);
-        await delay(150);
-      }
-
-      // Phase 2: get call-type-specific agent prep
-      const stockChange = briefJson.stock
-        ? `${briefJson.stock.change >= 0 ? '+' : ''}${briefJson.stock.change.toFixed(2)} (${briefJson.stock.changePercent >= 0 ? '+' : ''}${briefJson.stock.changePercent.toFixed(2)}%)`
-        : 'N/A';
-
-      const agentRes = await fetch('/api/agent', {
+      const response = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -125,43 +103,79 @@ export default function Home() {
           callType: call.callType,
           seProfile: profile,
           notes: call.notes,
-          companyData: {
-            snapshot: briefJson.snapshot,
-            news: briefJson.news.articles,
-            stockChange,
-            techStack: briefJson.techStack.likely,
-            painSignals: briefJson.painSignals,
-          },
         }),
       });
 
-      if (!agentRes.ok) {
-        const err = await agentRes.json();
+      if (!response.ok) {
+        const err = await response.json();
         throw new Error(err.error ?? 'Agent request failed');
       }
 
-      const agentJson: AgentData = await agentRes.json();
-      setAgent(agentJson);
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
 
-      // Reveal agent cards
-      for (const s of ['agent-1', 'agent-2', 'agent-3', 'done'] as RevealStage[]) {
-        setStage(s);
-        await delay(150);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+
+          let event;
+          try {
+            event = JSON.parse(line.slice(6));
+          } catch {
+            continue;
+          }
+
+          if (event.type === 'thinking') {
+            setAgentLogs(prev => [...prev, { type: 'thinking', message: event.data.message }]);
+          }
+          if (event.type === 'tool_result') {
+            setAgentLogs(prev => [...prev, { type: 'result', message: event.data.summary }]);
+          }
+          if (event.type === 'brief_ready') {
+            setBrief(event.data.brief);
+            setCompanyIntel(event.data.companyIntel);
+            setStockData(event.data.stock || null);
+            setStockError(event.data.stockError || null);
+            setCallType(event.data.callType || call.callType);
+            setAgentState('complete');
+          }
+          if (event.type === 'error') {
+            setError(event.data.message);
+            setAgentState('error');
+          }
+        }
       }
+
+      // If we finished reading but never got brief_ready or error
+      setAgentState(prev => (prev === 'running' ? 'error' : prev));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong');
-    } finally {
-      setLoading(false);
+      setAgentState('error');
     }
-  };
+  }, [agentState]);
 
-  // Get the email label and data based on call type
+  // Build snapshot object from companyIntel string for SnapshotCard
+  const snapshotObj = companyIntel?.snapshot
+    ? { revenue: '', marketCap: '', growth: '', ceo: '', founded: '', employees: '', description: companyIntel.snapshot }
+    : null;
+
+  // Build pain signals array from companyIntel for PainSignalsCard
+  const painSignals = (companyIntel?.painSignals || []).map(s => ({ signal: s, why: '' }));
+
+  // Email label based on call type
   const emailLabel = callType === 'rfp' ? '// rfp cover email' : callType === 'demo' ? '// demo follow-up' : '// send this after';
-  const emailData = agent?.coverEmail ?? agent?.followUpEmail;
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
-      <Sidebar onRun={handleRun} loading={loading} />
+      <Sidebar onRun={handleRun} loading={agentState === 'running'} />
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
         <Navbar />
@@ -170,7 +184,7 @@ export default function Home() {
           <div style={{ maxWidth: '860px', margin: '0 auto' }}>
 
             {/* ── Empty state ────────────────────────── */}
-            {stage === 'idle' && !loading && !error && (
+            {agentState === 'idle' && (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
                 <p style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '14px', color: '#cccccc', letterSpacing: '0.05em' }}>
                   [ WAITING FOR TARGET ]
@@ -192,142 +206,150 @@ export default function Home() {
               </div>
             )}
 
-            {/* ── Loading skeletons ──────────────────── */}
-            {loading && !brief && (
-              <div>
-                <SkeletonCard height={70} rows={2} />
-                <div style={{ height: '10px' }} />
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <SkeletonCard height={160} rows={4} />
-                  <SkeletonCard height={160} rows={5} />
-                </div>
-                <div style={{ height: '10px' }} />
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <SkeletonCard height={120} rows={4} />
-                  <SkeletonCard height={120} rows={3} />
-                </div>
-                <div style={{ height: '10px' }} />
-                <SkeletonCard height={140} rows={4} />
-                <div style={{ height: '10px' }} />
-                <SkeletonCard height={80} rows={2} />
-                <div style={{ height: '10px' }} />
-                <SkeletonCard height={160} rows={4} />
-              </div>
-            )}
-
-            {/* ── Agent loading skeletons (brief done, agent in progress) ── */}
-            {loading && brief && !agent && (
-              <div style={{ marginTop: '10px' }}>
-                <SkeletonCard height={200} rows={6} />
-                <div style={{ height: '10px' }} />
-                <SkeletonCard height={160} rows={4} />
-                <div style={{ height: '10px' }} />
-                <SkeletonCard height={180} rows={5} />
-              </div>
+            {/* ── Agent Thinking Panel ────────────────── */}
+            {(agentState === 'running' || agentState === 'complete' || agentState === 'error') && (
+              <AgentThinkingPanel logs={agentLogs} state={agentState} elapsed={elapsed} />
             )}
 
             {/* ── Brief results ──────────────────────── */}
-            {brief && (
+            {brief && agentState === 'complete' && (
               <div>
-                {isRevealed('header') && (
-                  <div className="card-reveal">
-                    <CompanyHeader company={brief.company} fetchedAt={brief.fetchedAt}
-                      ticker={brief.stock?.symbol ?? null} snapshot={brief.snapshot} />
+                {/* Company header */}
+                <div className="card-reveal" style={{
+                  background: '#fff', border: '1px solid #e8e8e4', borderRadius: '8px',
+                  padding: '16px', marginBottom: '10px',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <h2 style={{
+                        fontFamily: 'var(--font-geist)', fontSize: '18px', fontWeight: 600,
+                        color: '#1a1a1a', margin: 0,
+                      }}>
+                        {prospect}
+                      </h2>
+                      {companyIntel?.snapshot && (
+                        <p style={{
+                          fontFamily: 'var(--font-geist)', fontSize: '12px', color: '#888',
+                          margin: '4px 0 0 0', lineHeight: 1.5,
+                        }}>
+                          {companyIntel.snapshot}
+                        </p>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <span style={{
+                        fontFamily: 'var(--font-geist-mono)', fontSize: '9px', color: '#888',
+                        border: '1px solid #e8e8e4', borderRadius: '4px', padding: '2px 6px',
+                      }}>
+                        {callType.toUpperCase()}
+                      </span>
+                    </div>
                   </div>
-                )}
+                </div>
 
-                {isRevealed('stock') && (
+                {/* Stock + Snapshot row */}
+                <div className="card-reveal" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                  <StockCard stock={stockData}
+                    isPrivate={stockError?.reason === 'not_found' || stockError?.reason === 'private'} />
+                  {snapshotObj ? (
+                    <SnapshotCard snapshot={snapshotObj} />
+                  ) : (
+                    <div style={{
+                      background: '#fff', border: '1px solid #e8e8e4', borderRadius: '8px',
+                      padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <span style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#ccc' }}>
+                        No snapshot data
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Tech Stack + Recent Developments */}
+                {(companyIntel?.techStack || companyIntel?.recentDevelopments) && (
                   <div className="card-reveal" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-                    <StockCard stock={brief.stock}
-                      isPrivate={brief.stockError?.reason === 'not_found' || brief.stockError?.reason === 'private'} />
-                    <SnapshotCard snapshot={brief.snapshot} />
+                    <TechStackCard
+                      likely={companyIntel?.techStack || []}
+                      source="agent-researched"
+                    />
+                    {/* Recent developments as a simple card */}
+                    <div style={{
+                      background: '#fff', border: '1px solid #e8e8e4', borderRadius: '8px', padding: '16px',
+                    }}>
+                      <span style={{
+                        fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#bbbbbb',
+                        letterSpacing: '0.1em', textTransform: 'uppercase',
+                        display: 'block', marginBottom: '12px',
+                      }}>
+                        // recent developments
+                      </span>
+                      {(companyIntel?.recentDevelopments || []).map((d, i) => (
+                        <p key={i} style={{
+                          fontFamily: 'var(--font-geist)', fontSize: '12px', color: '#555',
+                          margin: i > 0 ? '6px 0 0 0' : '0', lineHeight: 1.5,
+                        }}>
+                          • {d}
+                        </p>
+                      ))}
+                    </div>
                   </div>
                 )}
 
-                {isRevealed('techstack') && (
-                  <div className="card-reveal" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-                    <TechStackCard likely={brief.techStack.likely} source={brief.techStack.source} />
-                    <RedFlagsCard flags={brief.redFlags} />
-                  </div>
-                )}
-
-                {isRevealed('news') && (
-                  <div className="card-reveal" style={{ marginBottom: '10px' }}>
-                    <NewsCard articles={brief.news.articles} error={brief.news.error} />
-                  </div>
-                )}
-
-                {isRevealed('opening') && (
+                {/* Opening Line */}
+                {brief.openingLine && (
                   <div className="card-reveal" style={{ marginBottom: '10px' }}>
                     <OpeningLineCard line={brief.openingLine} />
                   </div>
                 )}
 
-                {isRevealed('pain') && (
+                {/* Pain Signals */}
+                {painSignals.length > 0 && (
                   <div className="card-reveal" style={{ marginBottom: '10px' }}>
-                    <PainSignalsCard signals={brief.painSignals} />
+                    <PainSignalsCard signals={painSignals} />
                   </div>
                 )}
 
-                {isRevealed('talking') && (
+                {/* Call-type-specific card */}
+                {callType === 'discovery' && brief.agenda && (
                   <div className="card-reveal" style={{ marginBottom: '10px' }}>
-                    <TalkingPointsCard points={brief.talkingPoints} />
+                    <DiscoveryAgendaCard agenda={brief.agenda} />
+                  </div>
+                )}
+                {callType === 'demo' && brief.demoScript && (
+                  <div className="card-reveal" style={{ marginBottom: '10px' }}>
+                    <DemoScriptCard script={brief.demoScript} />
+                  </div>
+                )}
+                {callType === 'rfp' && brief.answerBank && (
+                  <div className="card-reveal" style={{ marginBottom: '10px' }}>
+                    <RFPAnswerBankCard answers={brief.answerBank} />
                   </div>
                 )}
 
-                {/* ── Agent results ───────────────────── */}
-                {agent && (
-                  <>
-                    {/* Card 1: call-type-specific main card */}
-                    {isRevealed('agent-1') && (
-                      <div className="card-reveal" style={{ marginBottom: '10px' }}>
-                        {callType === 'discovery' && agent.agenda && (
-                          <DiscoveryAgendaCard agenda={agent.agenda} />
-                        )}
-                        {callType === 'demo' && agent.demoScript && (
-                          <DemoScriptCard script={agent.demoScript} />
-                        )}
-                        {callType === 'rfp' && agent.answerBank && (
-                          <RFPAnswerBankCard answers={agent.answerBank} />
-                        )}
-                      </div>
-                    )}
+                {/* Objections */}
+                {brief.objections && (
+                  <div className="card-reveal" style={{ marginBottom: '10px' }}>
+                    <ObjectionsCard objections={brief.objections} />
+                  </div>
+                )}
 
-                    {/* Card 2: objections */}
-                    {isRevealed('agent-2') && agent.objections && (
-                      <div className="card-reveal" style={{ marginBottom: '10px' }}>
-                        <ObjectionsCard objections={agent.objections} />
-                      </div>
-                    )}
-
-                    {/* Card 3: follow-up email */}
-                    {isRevealed('agent-3') && emailData && (
-                      <div className="card-reveal" style={{ marginBottom: '24px' }}>
-                        <EmailCard label={emailLabel} subject={emailData.subject} body={emailData.body} />
-                      </div>
-                    )}
-                  </>
+                {/* Follow-up Email */}
+                {brief.followUpEmail && (
+                  <div className="card-reveal" style={{ marginBottom: '24px' }}>
+                    <EmailCard
+                      label={emailLabel}
+                      subject={brief.followUpEmail.subject}
+                      body={brief.followUpEmail.body}
+                    />
+                  </div>
                 )}
 
                 {/* Bottom row */}
-                {isRevealed('done') && (
-                  <div className="card-reveal" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '8px' }}>
-                    <span style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#cccccc', letterSpacing: '0.05em' }}>
-                      powered by claude + newsapi + finnhub
-                    </span>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      {(['[ export pdf ]', '[ copy ]'] as const).map(label => (
-                        <button key={label} style={{
-                          fontFamily: 'var(--font-geist-mono)', fontSize: '10px', letterSpacing: '0.1em',
-                          padding: '4px 10px', border: '1px solid #e8e8e4', borderRadius: '4px',
-                          background: 'transparent', color: '#888888', cursor: 'pointer',
-                        }}>
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <div className="card-reveal" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '8px' }}>
+                  <span style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#cccccc', letterSpacing: '0.05em' }}>
+                    powered by claude + tavily + finnhub
+                  </span>
+                </div>
               </div>
             )}
           </div>
