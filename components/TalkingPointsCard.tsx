@@ -20,7 +20,7 @@ export default function TalkingPointsCard({ points }: TalkingPointsCardProps) {
           talking points
         </span>
         <span style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#cccccc', letterSpacing: '0.05em' }}>
-          claude-3.5
+          claude-4.6
         </span>
       </div>
 

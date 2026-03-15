@@ -35,7 +35,7 @@ export default function Navbar() {
             background: '#fff',
           }}
         >
-          [ CLAUDE-3.5 ]
+          [ CLAUDE-4.6 ]
         </span>
 
         <span
