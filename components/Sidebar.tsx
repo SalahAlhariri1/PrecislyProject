@@ -33,6 +33,7 @@ interface SidebarProps {
   onRun: (profile: SEProfile, call: CallConfig) => void;
   onRestoreBrief: (brief: BriefSummary) => void;
   loading: boolean;
+  briefRefreshKey?: number;
 }
 
 const inputStyle: React.CSSProperties = {
@@ -73,7 +74,7 @@ function mapDbProfile(data: Record<string, string>): SEProfile {
   };
 }
 
-export default function Sidebar({ onRun, onRestoreBrief, loading }: SidebarProps) {
+export default function Sidebar({ onRun, onRestoreBrief, loading, briefRefreshKey }: SidebarProps) {
   const { isSignedIn } = useUser();
   const [profile, setProfile] = useState<SEProfile>(DEFAULT_PROFILE);
   const [call, setCall] = useState<CallConfig>({ prospect: '', callType: 'discovery', notes: '' });
@@ -99,14 +100,14 @@ export default function Sidebar({ onRun, onRestoreBrief, loading }: SidebarProps
     }
   }, [isSignedIn]);
 
-  // Load brief history when signed in
+  // Load brief history when signed in (re-fetches whenever briefRefreshKey changes)
   useEffect(() => {
     if (!isSignedIn) return;
     fetch('/api/briefs')
       .then(r => r.json())
       .then(({ briefs }) => { if (briefs) setBriefHistory(briefs); })
       .catch(() => { /* non-fatal */ });
-  }, [isSignedIn]);
+  }, [isSignedIn, briefRefreshKey]);
 
   const handleSave = async () => {
     localStorage.setItem(LS_KEY, JSON.stringify(profile));

@@ -91,6 +91,7 @@ const CONF_STYLES: Record<string, { bg: string; color: string; border: string }>
 export default function Home() {
   const { isSignedIn } = useUser();
   const [agentState, setAgentState] = useState<AgentState>('idle');
+  const [briefRefreshKey, setBriefRefreshKey] = useState(0);
   const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -190,7 +191,9 @@ export default function Home() {
                   notes: call.notes,
                   cards: localCards,
                 }),
-              }).catch(() => { /* non-fatal */ });
+              })
+                .then(() => setBriefRefreshKey(k => k + 1))
+                .catch(() => { /* non-fatal */ });
             }
           }
           if (event.type === 'error') {
@@ -205,7 +208,7 @@ export default function Home() {
       setError(e instanceof Error ? e.message : 'Something went wrong');
       setAgentState('error');
     }
-  }, [agentState]);
+  }, [agentState, isSignedIn]);
 
   // Stock display
   const stock = cards.snapshot?.stock;
@@ -259,7 +262,7 @@ export default function Home() {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
-      <Sidebar onRun={handleRun} onRestoreBrief={handleRestoreBrief} loading={agentState === 'running'} />
+      <Sidebar onRun={handleRun} onRestoreBrief={handleRestoreBrief} loading={agentState === 'running'} briefRefreshKey={briefRefreshKey} />
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
         <main style={{ flex: 1, background: '#fafaf9', padding: '32px 24px', overflowY: 'auto' }}>
