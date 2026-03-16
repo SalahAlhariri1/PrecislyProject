@@ -1,6 +1,6 @@
-// POST /api/agent — SSE agentic loop
-// Claude autonomously decides which tools to call, streams thinking to the UI,
-// then produces the final SE prep package via generate_brief tool.
+// POST /api/agent — SSE agentic loop with progressive card streaming
+// Each output_* tool fires a card_ready event immediately as the agent completes that section.
+// Research tools run in parallel within each agent response.
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,13 +27,13 @@ interface AgentBody {
   notes: string;
 }
 
-// ─── Tool definitions for Claude ────────────────────────
+// ─── Research tools ──────────────────────────────────────
 
-const TOOLS: Anthropic.Tool[] = [
+const RESEARCH_TOOLS: Anthropic.Tool[] = [
   {
     name: 'search_web',
     description:
-      'Search the web for any query. Use this to find recent news, company announcements, funding rounds, layoffs, product launches, or any current information about the prospect company.',
+      'Search the web for any query. Use this to find recent news, company announcements, funding rounds, layoffs, product launches, pricing, or any current information.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -45,7 +45,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: 'fetch_url',
     description:
-      'Fetch and read the full content of a specific URL. Use this when a search result looks highly relevant and you need the full article.',
+      'Fetch and read the full content of a specific URL. Use when a search result looks highly relevant and you need the full article or page.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -62,14 +62,17 @@ const TOOLS: Anthropic.Tool[] = [
       type: 'object' as const,
       properties: {
         company: { type: 'string', description: 'Company name' },
-        role_type: { type: 'string', description: 'Optional role type filter e.g. "engineering" or "sales"' },
+        role_type: {
+          type: 'string',
+          description: 'Optional role type filter e.g. "engineering" or "sales"',
+        },
       },
       required: ['company'],
     },
   },
   {
     name: 'get_stock_data',
-    description: 'Get current stock price and recent performance for a public company. Use ticker symbol.',
+    description: 'Get current stock price and recent performance for a public company.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -89,134 +92,200 @@ const TOOLS: Anthropic.Tool[] = [
       required: ['company'],
     },
   },
+];
+
+// ─── Output tools (fire card_ready events) ──────────────
+
+const OUTPUT_TOOLS: Anthropic.Tool[] = [
   {
-    name: 'generate_brief',
+    name: 'output_snapshot',
     description:
-      'Call this tool when you have gathered enough intelligence and are ready to generate the final SE prep package. This ends the research loop.',
+      'Output the company snapshot card. Call this as soon as you have basic company context — do NOT wait for all research to complete. This card appears in the UI immediately.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        companyIntel: {
+        snapshot: {
           type: 'object',
           properties: {
-            snapshot: {
-              type: 'object',
-              properties: {
-                revenue: { type: 'string', description: 'Annual revenue e.g. "$383B (FY2024)"' },
-                marketCap: { type: 'string', description: 'Market capitalization e.g. "$3.68T"' },
-                growth: { type: 'string', description: 'YoY revenue growth e.g. "+12%"' },
-                ceo: { type: 'string', description: 'CEO name' },
-                founded: { type: 'string', description: 'Year founded e.g. "1998"' },
-                employees: { type: 'string', description: 'Approximate headcount e.g. "~182,000"' },
-                description: { type: 'string', description: 'One-sentence company description' },
-              },
-              required: ['revenue', 'marketCap', 'growth', 'ceo', 'founded', 'employees', 'description'],
-            },
-            painSignals: { type: 'array', items: { type: 'string' } },
-            techStack: { type: 'array', items: { type: 'string' } },
-            recentDevelopments: { type: 'array', items: { type: 'string' } },
-            jobPostingInsights: { type: 'array', items: { type: 'string' } },
-            competitiveLandscape: { type: 'string' },
+            revenue: { type: 'string', description: 'Annual revenue e.g. "$383B (FY2024)"' },
+            marketCap: { type: 'string', description: 'Market cap e.g. "$3.68T"' },
+            growth: { type: 'string', description: 'YoY growth e.g. "+12%"' },
+            ceo: { type: 'string', description: 'CEO name' },
+            founded: { type: 'string', description: 'Year founded' },
+            employees: { type: 'string', description: 'Approx headcount e.g. "~182,000"' },
+            description: { type: 'string', description: 'One-sentence company description' },
           },
-          required: ['snapshot', 'painSignals', 'techStack', 'recentDevelopments', 'competitiveLandscape'],
+          required: ['revenue', 'marketCap', 'growth', 'ceo', 'founded', 'employees', 'description'],
         },
-        callType: { type: 'string', enum: ['discovery', 'demo', 'rfp'] },
-        output: {
-          type: 'object',
-          properties: {
-            agenda: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  item: { type: 'string' },
-                  question: { type: 'string' },
-                  why: { type: 'string' },
-                },
-                required: ['item', 'question', 'why'],
-              },
-            },
-            demoScript: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  act: { type: 'string' },
-                  whatToShow: { type: 'string' },
-                  whatToSay: { type: 'string' },
-                  addresses: { type: 'string' },
-                },
-                required: ['act', 'whatToShow', 'whatToSay', 'addresses'],
-              },
-            },
-            answerBank: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  question: { type: 'string' },
-                  answer: { type: 'string' },
-                  tailor: { type: 'string' },
-                },
-                required: ['question', 'answer', 'tailor'],
-              },
-            },
-            objections: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  objection: { type: 'string' },
-                  counter: { type: 'string' },
-                  confidence: { type: 'string' },
-                },
-                required: ['objection', 'counter', 'confidence'],
-              },
-            },
-            followUpEmail: {
-              type: 'object',
-              properties: {
-                subject: { type: 'string' },
-                body: { type: 'string' },
-              },
-              required: ['subject', 'body'],
-            },
-            openingLine: { type: 'string' },
-          },
-          required: ['objections', 'followUpEmail', 'openingLine'],
+        techStack: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Inferred tech stack from job postings and public info',
+        },
+        stockSymbol: { type: 'string', description: 'Ticker symbol if public, omit if private' },
+        stockIsPublic: { type: 'boolean' },
+      },
+      required: ['snapshot', 'techStack'],
+    },
+  },
+  {
+    name: 'output_intelligence',
+    description:
+      'Output pain signals, job insights, and competitive context. Call this once you have identified the key pain points — appears immediately. You can still research more after calling this.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        painSignals: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Each must be specific and evidence-backed from your research. No generic observations.',
+        },
+        jobPostingInsights: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'What do hiring patterns reveal about strategic direction?',
+        },
+        recentDevelopments: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Recent news, funding, product launches, leadership changes',
+        },
+        redFlags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Deal risks: layoffs, legal issues, churn signals, financial stress',
+        },
+        competitiveLandscape: {
+          type: 'string',
+          description: 'What vendors are they likely using today? Who else is competing for this deal?',
         },
       },
-      required: ['companyIntel', 'callType', 'output'],
+      required: ['painSignals', 'recentDevelopments', 'competitiveLandscape'],
+    },
+  },
+  {
+    name: 'output_call_prep',
+    description:
+      'Output the call-specific prep package: opening line, agenda/demo script/RFP answers, and objection handling. Call this when synthesis is ready — appears immediately.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        openingLine: {
+          type: 'string',
+          description:
+            'One specific sentence to open the call. Must reference a real, recent event you found. This should show you\'ve done your homework.',
+        },
+        agenda: {
+          type: 'array',
+          description: 'For discovery calls — 5 items',
+          items: {
+            type: 'object',
+            properties: {
+              item: { type: 'string' },
+              question: { type: 'string' },
+              why: { type: 'string', description: 'Why this matters for your product' },
+            },
+            required: ['item', 'question', 'why'],
+          },
+        },
+        demoScript: {
+          type: 'array',
+          description: 'For demo calls — 5 acts: Hook → Problem → Solution → Proof → CTA',
+          items: {
+            type: 'object',
+            properties: {
+              act: { type: 'string' },
+              whatToShow: { type: 'string' },
+              whatToSay: { type: 'string' },
+              addresses: { type: 'string', description: 'Which pain signal this addresses' },
+            },
+            required: ['act', 'whatToShow', 'whatToSay', 'addresses'],
+          },
+        },
+        answerBank: {
+          type: 'array',
+          description: 'For RFP responses — 8 pre-drafted Q&A pairs',
+          items: {
+            type: 'object',
+            properties: {
+              question: { type: 'string' },
+              answer: { type: 'string' },
+              tailor: { type: 'string', description: 'How to tailor to this specific company' },
+            },
+            required: ['question', 'answer', 'tailor'],
+          },
+        },
+        objections: {
+          type: 'array',
+          description: 'Anticipated objections specific to this company — not generic',
+          items: {
+            type: 'object',
+            properties: {
+              objection: { type: 'string' },
+              counter: { type: 'string' },
+              confidence: {
+                type: 'string',
+                enum: ['HIGH', 'MED', 'LOW'],
+                description: 'How likely this objection is given what you found',
+              },
+            },
+            required: ['objection', 'counter', 'confidence'],
+          },
+        },
+      },
+      required: ['openingLine', 'objections'],
+    },
+  },
+  {
+    name: 'output_email',
+    description:
+      'Output the follow-up email. Call this LAST — it signals the brief is complete and closes the agent loop. Do not call this until output_call_prep has already been called.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        subject: { type: 'string' },
+        body: {
+          type: 'string',
+          description:
+            'Full email body. Plain text only — no markdown, no asterisks. Reference the specific call type and prospect context.',
+        },
+      },
+      required: ['subject', 'body'],
     },
   },
 ];
 
+const TOOLS = [...RESEARCH_TOOLS, ...OUTPUT_TOOLS];
+const OUTPUT_TOOL_NAMES = new Set(['output_snapshot', 'output_intelligence', 'output_call_prep', 'output_email']);
+
 // ─── System prompt ──────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are an autonomous Sales Engineering research agent. Your job is to thoroughly research a prospect company and produce a complete call prep package for a Sales Engineer.
+const SYSTEM_PROMPT = `You are an autonomous Sales Engineering research agent. Research a prospect company and build a complete call prep brief — streaming each section to the UI the moment you have enough to output it.
 
-You have access to tools. Use them proactively and intelligently:
-- Always search for recent news first to understand current context
-- Always search job postings — they reveal pain points better than anything
-- Fetch full articles when headlines suggest something important
-- Search for the company's tech stack
-- Look for funding, layoffs, leadership changes, product launches
-- Cross-reference everything against the SE's product strengths
+CRITICAL: Do NOT batch everything and output at the end. Output each section as soon as you have it:
 
-Research process (be efficient — aim for 4-6 total tool calls, not more):
-1. Start with a broad news search
-2. Optionally fetch one highly relevant article
-3. Search job postings to infer internal priorities
-4. Get stock data if public company
-5. Once you have strong signal, call generate_brief IMMEDIATELY — do not over-research
+WORKFLOW:
+1. Start with get_news AND search_web in parallel (both in the same response)
+2. search_jobs to find hiring patterns and pain signals
+3. Optionally fetch_url for 1-2 highly relevant articles
+4. get_stock_data if public company
+5. → Call output_snapshot as soon as you have company basics (after 2-3 research calls)
+6. → Call output_intelligence once you've identified the key pain signals
+7. Synthesize for the specific call type
+8. → Call output_call_prep with opening line + agenda/demo/rfp + objections
+9. → Call output_email LAST — this closes the loop
 
-Quality bar:
-- Every talking point must reference something specific you found
-- Objections must be realistic for THIS company, not generic
-- The opening line must reference a specific recent event
-- Demo script acts must map to specific pain signals you discovered
+PARALLEL RESEARCH: You can call multiple research tools in a single response. Always do get_news and search_web together in your first response.
 
-When you have enough intelligence (after 4-6 tool calls), call generate_brief immediately. Do NOT keep searching — wrap up quickly. Speed matters.
+QUALITY BAR:
+- Every pain signal must reference something specific you found in your research
+- The opening line must reference a real, recent event (funding, product launch, leadership change, earnings)
+- Objections must be specific to THIS company's actual situation — not generic
+- Demo script acts must each map to a specific pain signal you discovered
+- Job posting insights must go beyond "they're hiring" — interpret the strategic meaning
+
+OUTPUT TOOLS appear in the UI immediately as cards. Call them as you complete each research thread — do not wait until everything is done.
 
 Today's date is ${new Date().toISOString().split('T')[0]}.`;
 
@@ -238,7 +307,7 @@ Prospect: ${body.prospect}
 Call type: ${body.callType}
 SE's existing notes: ${body.notes || 'None provided'}
 
-Begin your research now. Use your tools. When ready, call generate_brief.`;
+Begin research now. Start with get_news and search_web in parallel. Output each section as soon as you have enough — do not wait.`;
 }
 
 // ─── Thinking message generator ─────────────────────────
@@ -246,17 +315,23 @@ Begin your research now. Use your tools. When ready, call generate_brief.`;
 function getThinkingMessage(toolName: string, input: Record<string, unknown>): string {
   switch (toolName) {
     case 'search_web':
-      return `Searching for "${input.query}"...`;
+      return `Searching: "${input.query}"`;
     case 'fetch_url':
-      return `Reading article: ${(input.url as string).slice(0, 80)}...`;
+      return `Reading: ${(input.url as string).replace(/^https?:\/\//, '').slice(0, 70)}`;
     case 'search_jobs':
-      return `Searching ${input.company} job postings${input.role_type ? ` (${input.role_type})` : ''}...`;
+      return `Job postings: ${input.company}${input.role_type ? ` (${input.role_type})` : ''}`;
     case 'get_stock_data':
-      return `Fetching stock data for ${input.ticker}...`;
+      return `Stock data: ${input.ticker}`;
     case 'get_news':
-      return `Fetching recent news for ${input.company}...`;
-    case 'generate_brief':
-      return 'Building your prep package...';
+      return `News: ${input.company}`;
+    case 'output_snapshot':
+      return 'Outputting company snapshot...';
+    case 'output_intelligence':
+      return 'Outputting intelligence brief...';
+    case 'output_call_prep':
+      return 'Outputting call prep...';
+    case 'output_email':
+      return 'Outputting follow-up email...';
     default:
       return `Running ${toolName}...`;
   }
@@ -273,16 +348,16 @@ function summarizeResult(toolName: string, result: unknown): string {
     if (toolName === 'fetch_url') {
       const r = result as { title?: string; content?: string };
       const len = r.content?.length ?? 0;
-      return `Fetched ${r.title || 'page'} (${Math.round(len / 1000)}k chars)`;
+      return `Fetched: ${r.title || 'page'} (${Math.round(len / 1000)}k chars)`;
     }
     if (toolName === 'get_stock_data') {
       const r = result as { price?: number; symbol?: string; error?: boolean };
-      if (r.error) return 'Stock data not available (private or not found)';
-      return `${r.symbol} @ $${r.price}`;
+      if (r.error) return 'Stock: private/not found';
+      return `${r.symbol} @ $${r.price?.toFixed(2)}`;
     }
     if (toolName === 'get_news') {
       const r = result as { articles?: Array<unknown> };
-      return `Found ${r.articles?.length ?? 0} recent articles`;
+      return `News: ${r.articles?.length ?? 0} articles`;
     }
     return 'Done';
   } catch {
@@ -313,16 +388,38 @@ async function executeTool(
       return tavily_search(query);
     }
     case 'get_stock_data': {
-      const result = await getStockData(input.ticker as string, true);
-      return result;
+      return getStockData(input.ticker as string, true);
     }
     case 'get_news': {
-      const result = await getCompanyNews(input.company as string);
-      return result;
+      return getCompanyNews(input.company as string);
     }
     default:
       return { error: `Unknown tool: ${toolName}` };
   }
+}
+
+// ─── Parse stock data from message history ──────────────
+
+function extractStockFromHistory(messages: Anthropic.MessageParam[]): {
+  stockData: Record<string, unknown> | null;
+  stockError: Record<string, unknown> | null;
+} {
+  let stockData = null;
+  let stockError = null;
+  for (const msg of messages) {
+    if (msg.role !== 'user' || typeof msg.content === 'string') continue;
+    const arr = msg.content as Array<{ type: string; content?: string }>;
+    for (const block of arr) {
+      if (block.type === 'tool_result' && block.content) {
+        try {
+          const parsed = JSON.parse(block.content);
+          if (parsed.symbol && parsed.price) stockData = parsed;
+          else if (parsed.error === true) stockError = parsed;
+        } catch { /* ignore */ }
+      }
+    }
+  }
+  return { stockData, stockError };
 }
 
 // ─── SSE endpoint ───────────────────────────────────────
@@ -355,9 +452,10 @@ export async function POST(req: NextRequest) {
         ];
 
         let iterations = 0;
-        const MAX_ITERATIONS = 6;
+        const MAX_ITERATIONS = 12;
+        let isDone = false;
 
-        while (iterations < MAX_ITERATIONS) {
+        while (iterations < MAX_ITERATIONS && !isDone) {
           iterations++;
 
           const response = await client.messages.create({
@@ -368,104 +466,101 @@ export async function POST(req: NextRequest) {
             messages,
           });
 
-          // Add assistant response to message history
           messages.push({ role: 'assistant', content: response.content });
 
-          // Check for generate_brief (stop condition)
-          const generateBriefCall = response.content.find(
-            (block): block is Anthropic.ToolUseBlock =>
-              block.type === 'tool_use' && block.name === 'generate_brief'
+          // Separate research tools from output tools
+          const toolBlocks = response.content.filter(
+            (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use'
           );
 
-          if (generateBriefCall) {
-            send('thinking', { message: 'Building your prep package...' });
-
-            const briefInput = generateBriefCall.input as {
-              companyIntel: Record<string, unknown>;
-              output: Record<string, unknown>;
-            };
-
-            // Also try to get stock data from one of the earlier tool calls
-            let stockData = null;
-            let stockError = null;
-            // Search message history for stock data
-            for (const msg of messages) {
-              if (msg.role !== 'user' || typeof msg.content === 'string') continue;
-              const arr = msg.content as Array<{ type: string; content?: string; tool_use_id?: string }>;
-              for (const block of arr) {
-                if (block.type === 'tool_result' && block.content) {
-                  try {
-                    const parsed = JSON.parse(block.content);
-                    if (parsed.symbol && parsed.price) {
-                      stockData = parsed;
-                    } else if (parsed.error === true) {
-                      stockError = parsed;
-                    }
-                  } catch { /* ignore */ }
-                }
-              }
-            }
-
-            send('brief_ready', {
-              brief: briefInput.output,
-              companyIntel: briefInput.companyIntel,
-              callType: body.callType,
-              stock: stockData,
-              stockError,
-            });
+          if (toolBlocks.length === 0) {
+            // Text-only response with no tool calls — agent stopped unexpectedly
+            send('error', { message: 'Agent stopped without completing the brief.' });
             break;
           }
 
-          // Execute all tool calls the agent made
-          const toolResults: Anthropic.ToolResultBlockParam[] = [];
+          const researchBlocks = toolBlocks.filter(b => !OUTPUT_TOOL_NAMES.has(b.name));
+          const outputBlocks = toolBlocks.filter(b => OUTPUT_TOOL_NAMES.has(b.name));
 
-          for (const block of response.content) {
-            if (block.type !== 'tool_use') continue;
+          // ── Execute research tools in PARALLEL ──────────
+          const researchResults = await Promise.all(
+            researchBlocks.map(async (block) => {
+              send('thinking', {
+                message: getThinkingMessage(block.name, block.input as Record<string, unknown>),
+              });
 
-            // Stream thinking message
+              let result: unknown;
+              try {
+                result = await executeTool(block.name, block.input as Record<string, unknown>);
+              } catch (err) {
+                result = { error: err instanceof Error ? err.message : 'Tool failed' };
+              }
+
+              send('tool_result', {
+                tool: block.name,
+                summary: summarizeResult(block.name, result),
+              });
+
+              let resultStr = JSON.stringify(result);
+              if (resultStr.length > 4000) {
+                resultStr = resultStr.slice(0, 4000) + '... [truncated]';
+              }
+
+              return {
+                type: 'tool_result' as const,
+                tool_use_id: block.id,
+                content: resultStr,
+              };
+            })
+          );
+
+          // ── Handle output tools (fire card_ready events) ─
+          const outputResults: Anthropic.ToolResultBlockParam[] = [];
+
+          for (const block of outputBlocks) {
             send('thinking', {
               message: getThinkingMessage(block.name, block.input as Record<string, unknown>),
             });
 
-            // Execute the tool
-            let result: unknown;
-            try {
-              result = await executeTool(block.name, block.input as Record<string, unknown>);
-            } catch (err) {
-              result = { error: err instanceof Error ? err.message : 'Tool execution failed' };
+            // For snapshot, merge live stock data from message history
+            let cardData: Record<string, unknown> = block.input as Record<string, unknown>;
+
+            if (block.name === 'output_snapshot') {
+              const { stockData, stockError } = extractStockFromHistory(messages);
+              cardData = { ...cardData, stock: stockData, stockError };
             }
 
-            // Stream tool result summary
-            send('tool_result', {
-              tool: block.name,
-              summary: summarizeResult(block.name, result),
+            send('card_ready', {
+              type: block.name.replace('output_', ''),
+              data: cardData,
             });
 
-            // Truncate large results to keep context manageable
-            let resultStr = JSON.stringify(result);
-            if (resultStr.length > 4000) {
-              resultStr = resultStr.slice(0, 4000) + '... [truncated]';
-            }
-
-            toolResults.push({
+            outputResults.push({
               type: 'tool_result',
               tool_use_id: block.id,
-              content: resultStr,
+              content: 'Card rendered in UI successfully.',
             });
+
+            if (block.name === 'output_email') {
+              isDone = true;
+            }
           }
 
-          // If no tool calls were made (text-only response), we're done
-          if (toolResults.length === 0) {
-            send('error', { message: 'Agent stopped without generating a brief.' });
-            break;
-          }
+          // Collect all results and continue the loop
+          const allResults: Anthropic.ToolResultBlockParam[] = [
+            ...researchResults,
+            ...outputResults,
+          ];
 
-          // Add tool results to message history and loop
-          messages.push({ role: 'user', content: toolResults });
+          messages.push({ role: 'user', content: allResults });
         }
 
-        if (iterations >= MAX_ITERATIONS) {
-          send('error', { message: 'Agent reached maximum iterations without completing.' });
+        if (iterations >= MAX_ITERATIONS && !isDone) {
+          send('error', { message: 'Agent reached maximum iterations.' });
+        }
+
+        if (isDone) {
+          send('agent_complete', {});
         }
       } catch (err) {
         console.error('[/api/agent] Error:', err);
