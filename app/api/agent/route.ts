@@ -259,33 +259,33 @@ const OUTPUT_TOOLS: Anthropic.Tool[] = [
 const TOOLS = [...RESEARCH_TOOLS, ...OUTPUT_TOOLS];
 const OUTPUT_TOOL_NAMES = new Set(['output_snapshot', 'output_intelligence', 'output_call_prep', 'output_email']);
 
+// Minimum research tool calls required before output tools are unlocked
+const MIN_RESEARCH_CALLS = 4;
+
 // ─── System prompt ──────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are an autonomous Sales Engineering research agent. Research a prospect company and build a complete call prep brief — streaming each section to the UI the moment you have enough to output it.
+const SYSTEM_PROMPT = `You are an autonomous Sales Engineering research agent. Your job is to research a real prospect company using live tools and produce a specific, evidence-based call prep brief.
 
-CRITICAL: Do NOT batch everything and output at the end. Output each section as soon as you have it:
+MANDATORY RESEARCH SEQUENCE — you must complete ALL of these before calling any output_ tool:
+1. get_news + search_web("${'{prospect}'} company news 2024 2025") in parallel — first response always
+2. search_jobs("${'{prospect}'}") — reveals real pain points better than any press release
+3. search_web("${'{prospect}'} competitors technology stack challenges") — competitive + tech context
+4. search_web("${'{prospect}'} layoffs funding earnings leadership") — financial health signals
+5. fetch_url on the single most informative URL from your searches (annual report, press release, or news article)
 
-WORKFLOW:
-1. Start with get_news AND search_web in parallel (both in the same response)
-2. search_jobs to find hiring patterns and pain signals
-3. Optionally fetch_url for 1-2 highly relevant articles
-4. get_stock_data if public company
-5. → Call output_snapshot as soon as you have company basics (after 2-3 research calls)
-6. → Call output_intelligence once you've identified the key pain signals
-7. Synthesize for the specific call type
-8. → Call output_call_prep with opening line + agenda/demo/rfp + objections
-9. → Call output_email LAST — this closes the loop
+Only AFTER completing the above 5 research steps, begin outputting:
+6. → output_snapshot — company basics, tech stack, stock (if public)
+7. → output_intelligence — pain signals, red flags, competitive landscape (ALL grounded in what you found)
+8. → output_call_prep — opening line referencing a real recent event, agenda/demo/rfp, objections specific to THIS company
+9. → output_email LAST — closes the loop
 
-PARALLEL RESEARCH: You can call multiple research tools in a single response. Always do get_news and search_web together in your first response.
-
-QUALITY BAR:
-- Every pain signal must reference something specific you found in your research
-- The opening line must reference a real, recent event (funding, product launch, leadership change, earnings)
-- Objections must be specific to THIS company's actual situation — not generic
-- Demo script acts must each map to a specific pain signal you discovered
-- Job posting insights must go beyond "they're hiring" — interpret the strategic meaning
-
-OUTPUT TOOLS appear in the UI immediately as cards. Call them as you complete each research thread — do not wait until everything is done.
+RULES:
+- You cannot skip research steps. The output tools are locked until you have done real research.
+- Every pain signal must cite something specific you found (e.g. "3 open DevOps roles suggest infrastructure debt")
+- The opening line must reference a real event from your research, not generic praise
+- Objections must reflect THIS company's actual situation — not boilerplate
+- If a tool returns empty, try a different query — do not skip straight to output
+- PARALLEL: call multiple research tools in one response when they are independent
 
 Today's date is ${new Date().toISOString().split('T')[0]}.`;
 
@@ -307,7 +307,7 @@ Prospect: ${body.prospect}
 Call type: ${body.callType}
 SE's existing notes: ${body.notes || 'None provided'}
 
-Begin research now. Start with get_news and search_web in parallel. Output each section as soon as you have enough — do not wait.`;
+Start now: call get_news and search_web in your FIRST response (in parallel). You must complete at least 5 research tool calls before calling any output_ tool. Go.`;
 }
 
 // ─── Thinking message generator ─────────────────────────
@@ -452,17 +452,21 @@ export async function POST(req: NextRequest) {
         ];
 
         let iterations = 0;
-        const MAX_ITERATIONS = 12;
+        const MAX_ITERATIONS = 15;
         let isDone = false;
+        let researchCallCount = 0;
 
         while (iterations < MAX_ITERATIONS && !isDone) {
           iterations++;
+
+          // Research gate: only expose output tools once enough research has been done
+          const availableTools = researchCallCount >= MIN_RESEARCH_CALLS ? TOOLS : RESEARCH_TOOLS;
 
           const response = await client.messages.create({
             model: 'claude-sonnet-4-6',
             max_tokens: 8000,
             system: SYSTEM_PROMPT,
-            tools: TOOLS,
+            tools: availableTools,
             messages,
           });
 
@@ -483,6 +487,8 @@ export async function POST(req: NextRequest) {
           const outputBlocks = toolBlocks.filter(b => OUTPUT_TOOL_NAMES.has(b.name));
 
           // ── Execute research tools in PARALLEL ──────────
+          researchCallCount += researchBlocks.length;
+
           const researchResults = await Promise.all(
             researchBlocks.map(async (block) => {
               send('thinking', {
@@ -502,8 +508,8 @@ export async function POST(req: NextRequest) {
               });
 
               let resultStr = JSON.stringify(result);
-              if (resultStr.length > 4000) {
-                resultStr = resultStr.slice(0, 4000) + '... [truncated]';
+              if (resultStr.length > 8000) {
+                resultStr = resultStr.slice(0, 8000) + '... [truncated]';
               }
 
               return {

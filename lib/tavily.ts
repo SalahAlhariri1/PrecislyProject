@@ -14,8 +14,8 @@ export async function tavily_search(
   try {
     const client = getClient();
     const response = await client.search(query, {
-      maxResults: 5,
-      searchDepth: 'basic',
+      maxResults: 8,
+      searchDepth: 'advanced',
     });
 
     return (response.results || []).map((r) => ({
