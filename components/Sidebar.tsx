@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { UserButton, useUser } from '@clerk/nextjs';
 
 const LS_KEY = 'se_config';
 
@@ -20,8 +21,17 @@ export interface CallConfig {
   notes: string;
 }
 
+export interface BriefSummary {
+  id: string;
+  prospect: string;
+  call_type: string;
+  created_at: string;
+  cards: Record<string, unknown>;
+}
+
 interface SidebarProps {
   onRun: (profile: SEProfile, call: CallConfig) => void;
+  onRestoreBrief: (brief: BriefSummary) => void;
   loading: boolean;
 }
 
@@ -51,22 +61,64 @@ const DEFAULT_PROFILE: SEProfile = {
   name: '', company: '', product: '', whatItDoes: '', strengths: '', weaknesses: '', typicalBuyer: '',
 };
 
-export default function Sidebar({ onRun, loading }: SidebarProps) {
+function mapDbProfile(data: Record<string, string>): SEProfile {
+  return {
+    name: data.name ?? '',
+    company: data.company ?? '',
+    product: data.product ?? '',
+    whatItDoes: data.what_it_does ?? '',
+    strengths: data.strengths ?? '',
+    weaknesses: data.weaknesses ?? '',
+    typicalBuyer: data.typical_buyer ?? '',
+  };
+}
+
+export default function Sidebar({ onRun, onRestoreBrief, loading }: SidebarProps) {
+  const { isSignedIn } = useUser();
   const [profile, setProfile] = useState<SEProfile>(DEFAULT_PROFILE);
   const [call, setCall] = useState<CallConfig>({ prospect: '', callType: 'discovery', notes: '' });
   const [profileOpen, setProfileOpen] = useState(true);
   const [saved, setSaved] = useState(false);
+  const [briefHistory, setBriefHistory] = useState<BriefSummary[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
-  // Load from localStorage
+  // Load profile: from API if signed in, else from localStorage
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      if (raw) setProfile(JSON.parse(raw));
-    } catch { /* ignore */ }
-  }, []);
+    if (isSignedIn) {
+      fetch('/api/profile')
+        .then(r => r.json())
+        .then(({ profile: dbProfile }) => {
+          if (dbProfile) setProfile(mapDbProfile(dbProfile));
+        })
+        .catch(() => { /* fallback to localStorage below */ });
+    } else {
+      try {
+        const raw = localStorage.getItem(LS_KEY);
+        if (raw) setProfile(JSON.parse(raw));
+      } catch { /* ignore */ }
+    }
+  }, [isSignedIn]);
 
-  const handleSave = () => {
+  // Load brief history when signed in
+  useEffect(() => {
+    if (!isSignedIn) return;
+    fetch('/api/briefs')
+      .then(r => r.json())
+      .then(({ briefs }) => { if (briefs) setBriefHistory(briefs); })
+      .catch(() => { /* non-fatal */ });
+  }, [isSignedIn]);
+
+  const handleSave = async () => {
     localStorage.setItem(LS_KEY, JSON.stringify(profile));
+    if (isSignedIn) {
+      try {
+        await fetch('/api/profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(profile),
+        });
+      } catch { /* non-fatal */ }
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -78,6 +130,11 @@ export default function Sidebar({ onRun, loading }: SidebarProps) {
 
   const updateProfile = (key: keyof SEProfile, value: string) => {
     setProfile(prev => ({ ...prev, [key]: value }));
+  };
+
+  const formatDate = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
   return (
@@ -97,14 +154,28 @@ export default function Sidebar({ onRun, loading }: SidebarProps) {
         flexDirection: 'column',
       }}
     >
-      {/* Brand */}
-      <div style={{ marginBottom: '28px', paddingBottom: '20px', borderBottom: '1px solid #222222' }}>
-        <span style={{ fontFamily: 'var(--font-geist-mono)', fontWeight: 600, fontSize: '14px', color: '#e8e8e8' }}>
-          brief<span style={{ color: '#f97316' }}>.</span>dev
-        </span>
-        <span style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#444444', marginLeft: '8px', letterSpacing: '0.05em' }}>
-          agent
-        </span>
+      {/* Brand + UserButton */}
+      <div style={{
+        marginBottom: '28px', paddingBottom: '20px', borderBottom: '1px solid #222222',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <div>
+          <span style={{ fontFamily: 'var(--font-geist-mono)', fontWeight: 600, fontSize: '14px', color: '#e8e8e8' }}>
+            brief<span style={{ color: '#f97316' }}>.</span>dev
+          </span>
+          <span style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#444444', marginLeft: '8px', letterSpacing: '0.05em' }}>
+            agent
+          </span>
+        </div>
+        {isSignedIn && (
+          <UserButton
+            appearance={{
+              elements: {
+                avatarBox: { width: '24px', height: '24px' },
+              },
+            }}
+          />
+        )}
       </div>
 
       {/* ── Section 1: YOUR PRODUCT ────────────── */}
@@ -235,6 +306,63 @@ export default function Sidebar({ onRun, loading }: SidebarProps) {
           </button>
         </div>
       </div>
+
+      {/* ── Section 3: BRIEF HISTORY ──────────── */}
+      {isSignedIn && briefHistory.length > 0 && (
+        <>
+          <div style={{ borderTop: '1px solid #222222', margin: '20px 0' }} />
+          <div>
+            <button
+              onClick={() => setHistoryOpen(!historyOpen)}
+              style={{
+                fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#555555',
+                letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 10px 0',
+                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                display: 'flex', alignItems: 'center', gap: '6px',
+              }}
+            >
+              <span style={{ fontSize: '8px', transform: historyOpen ? 'rotate(90deg)' : 'none', transition: '0.15s' }}>▶</span>
+              {'// recent briefs'}
+            </button>
+
+            {historyOpen && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {briefHistory.slice(0, 10).map(brief => (
+                  <button
+                    key={brief.id}
+                    onClick={() => onRestoreBrief(brief)}
+                    style={{
+                      fontFamily: 'var(--font-geist-mono)',
+                      fontSize: '10px',
+                      color: '#888888',
+                      background: 'none',
+                      border: '1px solid #222222',
+                      borderRadius: '3px',
+                      padding: '6px 8px',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '8px',
+                      transition: 'border-color 0.1s',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.borderColor = '#444444')}
+                    onMouseLeave={e => (e.currentTarget.style.borderColor = '#222222')}
+                  >
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {brief.prospect}
+                    </span>
+                    <span style={{ color: '#444444', whiteSpace: 'nowrap', fontSize: '9px' }}>
+                      {brief.call_type.toUpperCase()} · {formatDate(brief.created_at)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </aside>
   );
 }

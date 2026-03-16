@@ -4,8 +4,9 @@
 // Progressive card rendering: each section appears as the agent completes it.
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useUser } from '@clerk/nextjs';
 import Sidebar from '@/components/Sidebar';
-import type { SEProfile, CallConfig } from '@/components/Sidebar';
+import type { SEProfile, CallConfig, BriefSummary } from '@/components/Sidebar';
 import AgentThinkingPanel from '@/components/AgentThinkingPanel';
 import type { AgentLog } from '@/components/AgentThinkingPanel';
 
@@ -88,6 +89,7 @@ const CONF_STYLES: Record<string, { bg: string; color: string; border: string }>
 // ─── Main ────────────────────────────────────────────────
 
 export default function Home() {
+  const { isSignedIn } = useUser();
   const [agentState, setAgentState] = useState<AgentState>('idle');
   const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
   const [elapsed, setElapsed] = useState(0);
@@ -147,6 +149,7 @@ export default function Home() {
       const decoder = new TextDecoder();
       let buffer = '';
       let sources = 0;
+      let localCards: Cards = {};
 
       while (true) {
         const { done, value } = await reader.read();
@@ -171,10 +174,24 @@ export default function Home() {
             setAgentLogs(prev => [...prev, { type: 'result', message: event.data.summary }]);
           }
           if (event.type === 'card_ready') {
-            setCards(prev => ({ ...prev, [event.data.type]: event.data.data }));
+            localCards = { ...localCards, [event.data.type]: event.data.data };
+            setCards(localCards);
           }
           if (event.type === 'agent_complete') {
             setAgentState('complete');
+            // Persist brief to DB for signed-in users (non-fatal)
+            if (isSignedIn) {
+              fetch('/api/briefs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  prospect: call.prospect,
+                  callType: call.callType,
+                  notes: call.notes,
+                  cards: localCards,
+                }),
+              }).catch(() => { /* non-fatal */ });
+            }
           }
           if (event.type === 'error') {
             setError(event.data.message);
@@ -227,12 +244,22 @@ export default function Home() {
     } catch { /* ignore */ }
   };
 
+  const handleRestoreBrief = useCallback((brief: BriefSummary) => {
+    setCards(brief.cards as Cards);
+    setProspect(brief.prospect);
+    setCallType(brief.call_type as 'discovery' | 'demo' | 'rfp');
+    setAgentState('complete');
+    setAgentLogs([]);
+    setError(null);
+    finalElapsed.current = 0;
+  }, []);
+
   const hasAnyCard = !!(cards.snapshot || cards.intelligence || cards.call_prep || cards.email);
   const showHeader = hasAnyCard || agentState === 'running';
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
-      <Sidebar onRun={handleRun} loading={agentState === 'running'} />
+      <Sidebar onRun={handleRun} onRestoreBrief={handleRestoreBrief} loading={agentState === 'running'} />
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
         <main style={{ flex: 1, background: '#fafaf9', padding: '32px 24px', overflowY: 'auto' }}>

@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
+    "@clerk/nextjs": "^7.0.4",
+    "@supabase/supabase-js": "^2.99.1",
     "@tavily/core": "^0.7.2",
     "eventsource-parser": "^3.0.6",
     "next": "14.2.35",

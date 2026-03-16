@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import localFont from 'next/font/local';
+import { ClerkProvider } from '@clerk/nextjs';
 import './globals.css';
 
 // Geist fonts are bundled by create-next-app
@@ -22,10 +23,12 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body style={{ margin: 0, background: '#fafaf9', color: '#1a1a1a', fontFamily: 'var(--font-geist), sans-serif' }}>
-        {children}
-      </body>
-    </html>
+    <ClerkProvider>
+      <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
+        <body style={{ margin: 0, background: '#fafaf9', color: '#1a1a1a', fontFamily: 'var(--font-geist), sans-serif' }}>
+          {children}
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }
