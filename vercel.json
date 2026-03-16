@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/calendar/trigger",
+      "schedule": "0 * * * *"
+    }
+  ]
+}

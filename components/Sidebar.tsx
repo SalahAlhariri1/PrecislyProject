@@ -29,6 +29,16 @@ export interface BriefSummary {
   cards: Record<string, unknown>;
 }
 
+export interface MeetingTrigger {
+  id: string;
+  company_name: string;
+  call_type: string;
+  meeting_time: string;
+  status: 'pending' | 'running' | 'complete' | 'failed';
+  brief_id: string | null;
+  briefs: { cards: Record<string, unknown> } | null;
+}
+
 interface SidebarProps {
   onRun: (profile: SEProfile, call: CallConfig) => void;
   onRestoreBrief: (brief: BriefSummary) => void;
@@ -82,6 +92,9 @@ export default function Sidebar({ onRun, onRestoreBrief, loading, briefRefreshKe
   const [saved, setSaved] = useState(false);
   const [briefHistory, setBriefHistory] = useState<BriefSummary[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [calendarConnected, setCalendarConnected] = useState(false);
+  const [meetings, setMeetings] = useState<MeetingTrigger[]>([]);
+  const [calendarOpen, setCalendarOpen] = useState(true);
 
   // Load profile: from API if signed in, else from localStorage
   useEffect(() => {
@@ -108,6 +121,18 @@ export default function Sidebar({ onRun, onRestoreBrief, loading, briefRefreshKe
       .then(({ briefs }) => { if (briefs) setBriefHistory(briefs); })
       .catch(() => { /* non-fatal */ });
   }, [isSignedIn, briefRefreshKey]);
+
+  // Load calendar meetings when signed in
+  useEffect(() => {
+    if (!isSignedIn) return;
+    fetch('/api/calendar/meetings')
+      .then(r => r.json())
+      .then(({ connected, meetings: m }) => {
+        setCalendarConnected(!!connected);
+        if (m) setMeetings(m);
+      })
+      .catch(() => { /* non-fatal */ });
+  }, [isSignedIn]);
 
   const handleSave = async () => {
     localStorage.setItem(LS_KEY, JSON.stringify(profile));
@@ -136,6 +161,33 @@ export default function Sidebar({ onRun, onRestoreBrief, loading, briefRefreshKe
   const formatDate = (iso: string) => {
     const d = new Date(iso);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const formatMeetingTime = (iso: string) => {
+    const d = new Date(iso);
+    const today = new Date();
+    const isToday = d.toDateString() === today.toDateString();
+    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+    const isTomorrow = d.toDateString() === tomorrow.toDateString();
+    const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    if (isToday) return `Today ${timeStr}`;
+    if (isTomorrow) return `Tomorrow ${timeStr}`;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ` ${timeStr}`;
+  };
+
+  const handleMeetingClick = (meeting: MeetingTrigger) => {
+    if (meeting.status === 'complete' && meeting.briefs?.cards) {
+      onRestoreBrief({
+        id: meeting.brief_id!,
+        prospect: meeting.company_name,
+        call_type: meeting.call_type,
+        created_at: meeting.meeting_time,
+        cards: meeting.briefs.cards,
+      });
+    } else if (meeting.status === 'pending' || meeting.status === 'failed') {
+      setCall(prev => ({ ...prev, prospect: meeting.company_name, callType: meeting.call_type as CallConfig['callType'] }));
+      onRun(profile, { prospect: meeting.company_name, callType: meeting.call_type as CallConfig['callType'], notes: '' });
+    }
   };
 
   return (
@@ -308,7 +360,97 @@ export default function Sidebar({ onRun, onRestoreBrief, loading, briefRefreshKe
         </div>
       </div>
 
-      {/* ── Section 3: BRIEF HISTORY ──────────── */}
+      {/* ── Section 3: CALENDAR ───────────────── */}
+      {isSignedIn && (
+        <>
+          <div style={{ borderTop: '1px solid #222222', margin: '20px 0' }} />
+          <div>
+            <button
+              onClick={() => setCalendarOpen(!calendarOpen)}
+              style={{
+                fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#555555',
+                letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 10px 0',
+                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                display: 'flex', alignItems: 'center', gap: '6px',
+              }}
+            >
+              <span style={{ fontSize: '8px', transform: calendarOpen ? 'rotate(90deg)' : 'none', transition: '0.15s' }}>▶</span>
+              {'// calendar'}
+            </button>
+
+            {calendarOpen && (
+              <div>
+                {!calendarConnected ? (
+                  <a
+                    href="/api/auth/google/connect"
+                    style={{
+                      display: 'block', textAlign: 'center',
+                      fontFamily: 'var(--font-geist-mono)', fontSize: '10px', letterSpacing: '0.08em',
+                      padding: '9px 12px', borderRadius: '4px',
+                      border: '1px solid #2a2a2a', color: '#888888',
+                      textDecoration: 'none', transition: 'border-color 0.1s, color 0.1s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#444'; e.currentTarget.style.color = '#ccc'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = '#2a2a2a'; e.currentTarget.style.color = '#888888'; }}
+                  >
+                    [ CONNECT GOOGLE CALENDAR ]
+                  </a>
+                ) : meetings.length === 0 ? (
+                  <p style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#444', margin: 0 }}>
+                    No upcoming meetings found
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {meetings.map(meeting => {
+                      const isReady = meeting.status === 'complete';
+                      const isRunning = meeting.status === 'running';
+                      const isFailed = meeting.status === 'failed';
+                      return (
+                        <button
+                          key={meeting.id}
+                          onClick={() => !isRunning && handleMeetingClick(meeting)}
+                          disabled={isRunning || loading}
+                          style={{
+                            fontFamily: 'var(--font-geist-mono)', fontSize: '10px',
+                            color: isReady ? '#d4d4d4' : '#888888',
+                            background: 'none',
+                            border: `1px solid ${isReady ? '#333' : '#222222'}`,
+                            borderRadius: '3px', padding: '7px 8px',
+                            cursor: isRunning || loading ? 'not-allowed' : 'pointer',
+                            textAlign: 'left', width: '100%',
+                            transition: 'border-color 0.1s',
+                          }}
+                          onMouseEnter={e => { if (!isRunning && !loading) e.currentTarget.style.borderColor = '#444'; }}
+                          onMouseLeave={e => { e.currentTarget.style.borderColor = isReady ? '#333' : '#222222'; }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {meeting.company_name}
+                            </span>
+                            <span style={{
+                              fontSize: '8px', whiteSpace: 'nowrap', padding: '1px 5px',
+                              borderRadius: '3px',
+                              background: isReady ? '#14532d' : isRunning ? '#1c1917' : isFailed ? '#450a0a' : '#1c1917',
+                              color: isReady ? '#4ade80' : isRunning ? '#f97316' : isFailed ? '#f87171' : '#888',
+                            }}>
+                              {isReady ? 'READY' : isRunning ? '...' : isFailed ? 'RETRY' : 'PREP'}
+                            </span>
+                          </div>
+                          <div style={{ color: '#555', fontSize: '9px', marginTop: '3px' }}>
+                            {meeting.call_type.toUpperCase()} · {formatMeetingTime(meeting.meeting_time)}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ── Section 4: BRIEF HISTORY ──────────── */}
       {isSignedIn && briefHistory.length > 0 && (
         <>
           <div style={{ borderTop: '1px solid #222222', margin: '20px 0' }} />

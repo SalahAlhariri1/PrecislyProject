@@ -3,6 +3,8 @@ import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 const isPublicRoute = createRouteMatcher([
   '/sign-in(.*)',
   '/sign-up(.*)',
+  '/api/calendar/trigger', // cron endpoint — secured by CRON_SECRET header
+  '/api/auth/google/callback', // OAuth redirect — userId comes from state param
 ]);
 
 export default clerkMiddleware(async (auth, request) => {
