@@ -39,12 +39,6 @@ export default function DemoScriptCard({ script }: DemoScriptCardProps) {
               <p style={{ fontFamily: 'var(--font-geist)', fontSize: '12px', color: '#555', margin: '4px 0 0 0', lineHeight: 1.5 }}>
                 {act.whatToShow}
               </p>
-              <p style={{ fontFamily: 'var(--font-geist)', fontSize: '12px', color: '#888', fontStyle: 'italic', margin: '4px 0 0 0', lineHeight: 1.5 }}>
-                SAY → {act.whatToSay}
-              </p>
-              <p style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#aaaaaa', margin: '3px 0 0 0', lineHeight: 1.5 }}>
-                ADDRESSES → {act.addresses}
-              </p>
             </div>
           </div>
         ))}

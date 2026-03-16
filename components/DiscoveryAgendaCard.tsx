@@ -38,9 +38,6 @@ export default function DiscoveryAgendaCard({ agenda }: DiscoveryAgendaCardProps
               <p style={{ fontFamily: 'var(--font-geist)', fontSize: '12px', color: '#888', fontStyle: 'italic', margin: '4px 0 0 0', lineHeight: 1.5 }}>
                 {a.question}
               </p>
-              <p style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#aaaaaa', margin: '3px 0 0 0', lineHeight: 1.5 }}>
-                WHY → {a.why}
-              </p>
             </div>
           </div>
         ))}

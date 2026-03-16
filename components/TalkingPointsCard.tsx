@@ -48,30 +48,17 @@ export default function TalkingPointsCard({ points }: TalkingPointsCardProps) {
             </span>
 
             {/* Content */}
-            <div>
-              <p
-                style={{
-                  fontFamily: 'var(--font-geist)',
-                  fontSize: '13px',
-                  color: '#1a1a1a',
-                  lineHeight: 1.6,
-                  margin: 0,
-                }}
-              >
-                {tp.point}
-              </p>
-              <p
-                style={{
-                  fontFamily: 'var(--font-geist-mono)',
-                  fontSize: '10px',
-                  color: '#aaaaaa',
-                  margin: '4px 0 0 0',
-                  lineHeight: 1.5,
-                }}
-              >
-                WHY: {tp.evidence}
-              </p>
-            </div>
+            <p
+              style={{
+                fontFamily: 'var(--font-geist)',
+                fontSize: '13px',
+                color: '#1a1a1a',
+                lineHeight: 1.5,
+                margin: 0,
+              }}
+            >
+              {tp.point}
+            </p>
           </div>
         ))}
       </div>

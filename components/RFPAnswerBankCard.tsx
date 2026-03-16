@@ -28,11 +28,8 @@ export default function RFPAnswerBankCard({ answers }: RFPAnswerBankCardProps) {
             <p style={{ fontFamily: 'var(--font-geist)', fontSize: '13px', color: '#1a1a1a', fontWeight: 500, margin: 0, lineHeight: 1.5 }}>
               {a.question}
             </p>
-            <p style={{ fontFamily: 'var(--font-geist)', fontSize: '12px', color: '#555', margin: '6px 0 0 0', lineHeight: 1.6 }}>
+            <p style={{ fontFamily: 'var(--font-geist)', fontSize: '12px', color: '#555', margin: '6px 0 0 0', lineHeight: 1.5 }}>
               {a.answer}
-            </p>
-            <p style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#aaaaaa', margin: '4px 0 0 0', lineHeight: 1.5 }}>
-              TAILOR → {a.tailor}
             </p>
           </div>
         ))}

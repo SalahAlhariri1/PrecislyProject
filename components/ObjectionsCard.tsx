@@ -33,16 +33,18 @@ export default function ObjectionsCard({ objections }: ObjectionsCardProps) {
           const conf = CONF_STYLES[obj.confidence] ?? CONF_STYLES.MED;
           return (
             <div key={i} style={{ borderBottom: i < objections.length - 1 ? '1px solid #f5f5f3' : 'none', paddingBottom: i < objections.length - 1 ? '16px' : 0 }}>
-              <p style={{ fontFamily: 'var(--font-geist)', fontSize: '13px', color: '#1a1a1a', fontStyle: 'italic', margin: '0 0 8px 0', lineHeight: 1.5, display: 'block', width: '100%' }}>
-                &ldquo;{obj.objection}&rdquo;
-              </p>
-              <span style={{
-                fontFamily: 'var(--font-geist-mono)', fontSize: '9px', letterSpacing: '0.1em',
-                padding: '2px 6px', borderRadius: '4px', display: 'inline-block', marginBottom: '8px',
-                background: conf.bg, color: conf.color, border: `1px solid ${conf.border}`,
-              }}>
-                {obj.confidence}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px', marginBottom: '6px' }}>
+                <p style={{ fontFamily: 'var(--font-geist)', fontSize: '13px', color: '#1a1a1a', fontStyle: 'italic', margin: 0, lineHeight: 1.5, flex: 1 }}>
+                  &ldquo;{obj.objection}&rdquo;
+                </p>
+                <span style={{
+                  fontFamily: 'var(--font-geist-mono)', fontSize: '9px', letterSpacing: '0.1em',
+                  padding: '2px 6px', borderRadius: '4px', flexShrink: 0,
+                  background: conf.bg, color: conf.color, border: `1px solid ${conf.border}`,
+                }}>
+                  {obj.confidence}
+                </span>
+              </div>
               <p style={{ fontFamily: 'var(--font-geist)', fontSize: '12px', color: '#555', margin: '0', lineHeight: 1.5 }}>
                 {obj.counter}
               </p>

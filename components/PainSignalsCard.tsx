@@ -42,13 +42,8 @@ export default function PainSignalsCard({ signals }: PainSignalsCardProps) {
                 marginTop: '7px',
               }}
             />
-            <div>
-              <div style={{ fontFamily: 'var(--font-geist)', fontSize: '13px', color: '#1a1a1a', lineHeight: 1.5 }}>
-                {s.signal}
-              </div>
-              <div style={{ fontFamily: 'var(--font-geist)', fontSize: '12px', color: '#888888', fontStyle: 'italic', marginTop: '4px', lineHeight: 1.5 }}>
-                {s.why}
-              </div>
+            <div style={{ fontFamily: 'var(--font-geist)', fontSize: '13px', color: '#1a1a1a', lineHeight: 1.5 }}>
+              {s.signal}
             </div>
           </div>
         ))}
