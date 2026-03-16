@@ -22,18 +22,21 @@ export default function AgentThinkingPanel({ logs, state, elapsed }: AgentThinki
 
   return (
     <div style={{
-      background: '#ffffff',
-      border: '1px solid #e8e8e4',
-      borderRadius: '8px',
-      padding: '16px',
+      background: '#0d0d0d',
+      border: '1px solid #222222',
+      borderRadius: '6px',
+      padding: '0',
       marginBottom: '20px',
+      overflow: 'hidden',
     }}>
-      {/* Header */}
+      {/* Terminal title bar */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: '12px',
+        padding: '8px 14px',
+        borderBottom: '1px solid #1e1e1e',
+        background: '#161616',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{
@@ -47,7 +50,7 @@ export default function AgentThinkingPanel({ logs, state, elapsed }: AgentThinki
           <span style={{
             fontFamily: 'var(--font-geist-mono)',
             fontSize: '10px',
-            color: '#1a1a1a',
+            color: state === 'running' ? '#f97316' : state === 'complete' ? '#16a34a' : '#dc2626',
             letterSpacing: '0.1em',
           }}>
             {state === 'running' ? '[ AGENT RUNNING ]' : state === 'complete' ? '[ BRIEF READY ]' : '[ ERROR ]'}
@@ -56,7 +59,7 @@ export default function AgentThinkingPanel({ logs, state, elapsed }: AgentThinki
         <span style={{
           fontFamily: 'var(--font-geist-mono)',
           fontSize: '10px',
-          color: '#cccccc',
+          color: '#333333',
           letterSpacing: '0.05em',
         }}>
           {elapsed}s
@@ -65,19 +68,27 @@ export default function AgentThinkingPanel({ logs, state, elapsed }: AgentThinki
 
       {/* Log area */}
       <div style={{
-        maxHeight: '200px',
+        maxHeight: '180px',
         overflowY: 'auto',
         fontFamily: 'var(--font-geist-mono)',
         fontSize: '11px',
+        padding: '12px 14px',
       }}>
         {logs.map((log, i) => (
           <div key={i} style={{
-            padding: '3px 0',
-            color: log.type === 'result' ? '#16a34a' : '#555555',
+            padding: '2px 0',
+            color: log.type === 'result' ? '#16a34a' : '#444444',
+            lineHeight: '1.5',
           }}>
-            {log.type === 'result' ? '✓' : '→'} {log.message}
+            <span style={{ color: log.type === 'result' ? '#16a34a' : '#2a2a2a', marginRight: '6px' }}>
+              {log.type === 'result' ? '✓' : '›'}
+            </span>
+            {log.message}
           </div>
         ))}
+        {logs.length === 0 && (
+          <span style={{ color: '#2a2a2a' }}>_</span>
+        )}
         <div ref={bottomRef} />
       </div>
     </div>

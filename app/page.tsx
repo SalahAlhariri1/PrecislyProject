@@ -4,7 +4,6 @@
 // Progressive card rendering: each section appears as the agent completes it.
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
 import type { SEProfile, CallConfig } from '@/components/Sidebar';
 import AgentThinkingPanel from '@/components/AgentThinkingPanel';
@@ -236,8 +235,6 @@ export default function Home() {
       <Sidebar onRun={handleRun} loading={agentState === 'running'} />
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-        <Navbar />
-
         <main style={{ flex: 1, background: '#fafaf9', padding: '32px 24px', overflowY: 'auto' }}>
           <div style={{ maxWidth: '860px', margin: '0 auto' }}>
 

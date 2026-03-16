@@ -29,11 +29,11 @@ const inputStyle: React.CSSProperties = {
   width: '100%',
   fontFamily: 'var(--font-geist-mono)',
   fontSize: '11px',
-  color: '#1a1a1a',
-  border: '1px solid #e8e8e4',
+  color: '#d4d4d4',
+  border: '1px solid #2a2a2a',
   borderRadius: '4px',
   padding: '8px 10px',
-  background: '#fafaf9',
+  background: '#1a1a1a',
   outline: 'none',
   boxSizing: 'border-box',
 };
@@ -41,7 +41,7 @@ const inputStyle: React.CSSProperties = {
 const labelStyle: React.CSSProperties = {
   fontFamily: 'var(--font-geist-mono)',
   fontSize: '10px',
-  color: '#999999',
+  color: '#555555',
   letterSpacing: '0.05em',
   display: 'block',
   marginBottom: '4px',
@@ -89,8 +89,8 @@ export default function Sidebar({ onRun, loading }: SidebarProps) {
         position: 'sticky',
         top: 0,
         zIndex: 10,
-        background: '#ffffff',
-        borderRight: '1px solid #e8e8e4',
+        background: '#111111',
+        borderRight: '1px solid #222222',
         padding: '24px 20px',
         overflowY: 'auto',
         display: 'flex',
@@ -98,11 +98,11 @@ export default function Sidebar({ onRun, loading }: SidebarProps) {
       }}
     >
       {/* Brand */}
-      <div style={{ marginBottom: '24px' }}>
-        <span style={{ fontFamily: 'var(--font-geist-mono)', fontWeight: 600, fontSize: '14px', color: '#1a1a1a' }}>
+      <div style={{ marginBottom: '28px', paddingBottom: '20px', borderBottom: '1px solid #222222' }}>
+        <span style={{ fontFamily: 'var(--font-geist-mono)', fontWeight: 600, fontSize: '14px', color: '#e8e8e8' }}>
           brief<span style={{ color: '#f97316' }}>.</span>dev
         </span>
-        <span style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#cccccc', marginLeft: '8px', letterSpacing: '0.05em' }}>
+        <span style={{ fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#444444', marginLeft: '8px', letterSpacing: '0.05em' }}>
           agent
         </span>
       </div>
@@ -112,7 +112,7 @@ export default function Sidebar({ onRun, loading }: SidebarProps) {
         <button
           onClick={() => setProfileOpen(!profileOpen)}
           style={{
-            fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#aaaaaa',
+            fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#555555',
             letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 12px 0',
             background: 'none', border: 'none', cursor: 'pointer', padding: 0,
             display: 'flex', alignItems: 'center', gap: '6px',
@@ -168,8 +168,12 @@ export default function Sidebar({ onRun, loading }: SidebarProps) {
               type="button"
               style={{
                 fontFamily: 'var(--font-geist-mono)', fontSize: '10px', letterSpacing: '0.1em',
-                width: '100%', padding: '10px', borderRadius: '6px', border: 'none', cursor: 'pointer',
-                background: saved ? '#16a34a' : '#1a1a1a', color: '#fff', transition: 'background 0.15s',
+                width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid',
+                borderColor: saved ? '#16a34a' : '#2a2a2a',
+                cursor: 'pointer',
+                background: 'transparent',
+                color: saved ? '#16a34a' : '#555555',
+                transition: 'all 0.15s',
               }}
             >
               {saved ? '[ PROFILE SAVED ✓ ]' : '[ SAVE PROFILE ]'}
@@ -179,12 +183,12 @@ export default function Sidebar({ onRun, loading }: SidebarProps) {
       </div>
 
       {/* Divider */}
-      <div style={{ borderTop: '1px solid #f0f0ec', margin: '20px 0' }} />
+      <div style={{ borderTop: '1px solid #222222', margin: '20px 0' }} />
 
       {/* ── Section 2: THIS CALL ───────────────── */}
       <div>
         <p style={{
-          fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#aaaaaa',
+          fontFamily: 'var(--font-geist-mono)', fontSize: '10px', color: '#555555',
           letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 12px 0',
         }}>
           {'// this call'}
@@ -199,7 +203,7 @@ export default function Sidebar({ onRun, loading }: SidebarProps) {
           <div>
             <label style={labelStyle}>call type</label>
             <select
-              style={{ ...inputStyle, cursor: 'pointer', appearance: 'auto' }}
+              style={{ ...inputStyle, cursor: 'pointer', appearance: 'auto', colorScheme: 'dark' }}
               value={call.callType}
               onChange={e => setCall(prev => ({ ...prev, callType: e.target.value as CallConfig['callType'] }))}
             >
@@ -220,9 +224,10 @@ export default function Sidebar({ onRun, loading }: SidebarProps) {
             type="button"
             style={{
               fontFamily: 'var(--font-geist-mono)', fontSize: '11px', letterSpacing: '0.1em',
-              width: '100%', padding: '12px', borderRadius: '6px', border: 'none',
-              background: loading ? '#555' : '#1a1a1a', color: '#fff',
-              cursor: 'pointer',
+              width: '100%', padding: '12px', borderRadius: '4px', border: 'none',
+              background: loading ? '#2a1a08' : '#f97316',
+              color: loading ? '#f97316' : '#000000',
+              cursor: loading ? 'not-allowed' : 'pointer',
               transition: 'background 0.15s',
             }}
           >
